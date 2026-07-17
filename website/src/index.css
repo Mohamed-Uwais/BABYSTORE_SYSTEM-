@@ -1,0 +1,167 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme {
+  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Code", monospace;
+
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
+
+  --color-accent-50: #fdf2f8;
+  --color-accent-100: #fce7f3;
+  --color-accent-200: #fbcfe8;
+  --color-accent-300: #f9a8d4;
+  --color-accent-400: #f472b6;
+  --color-accent-500: #ec4899;
+  --color-accent-600: #db2777;
+  --color-accent-700: #be185d;
+
+  --color-warm-50: #fafaf9;
+  --color-warm-100: #f5f5f4;
+  --color-warm-200: #e7e5e4;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-warm-50);
+  color: #1e293b;
+  line-height: 1.6;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.hero-img-pos { object-position: center 30%; }
+@media (min-width: 640px) { .hero-img-pos { object-position: center 20%; } }
+
+/* ─── Image loading ─── */
+.img-loading { filter: blur(10px); transition: filter 0.3s ease; }
+.img-loaded { filter: blur(0); }
+
+/* ─── Mesh gradient background (organic blobs) ─── */
+@keyframes mesh-blob-1 {
+  0%, 100% { transform: translate(0%, 0%) scale(1); }
+  25% { transform: translate(10%, -15%) scale(1.1); }
+  50% { transform: translate(-5%, 10%) scale(0.95); }
+  75% { transform: translate(15%, 5%) scale(1.05); }
+}
+@keyframes mesh-blob-2 {
+  0%, 100% { transform: translate(0%, 0%) scale(1); }
+  33% { transform: translate(-15%, 10%) scale(1.15); }
+  66% { transform: translate(10%, -10%) scale(0.9); }
+}
+@keyframes mesh-blob-3 {
+  0%, 100% { transform: translate(0%, 0%) scale(1); }
+  20% { transform: translate(12%, 8%) scale(0.95); }
+  40% { transform: translate(-8%, -12%) scale(1.1); }
+  60% { transform: translate(5%, 15%) scale(1.05); }
+  80% { transform: translate(-10%, -5%) scale(0.9); }
+}
+.mesh-blob-1 { animation: mesh-blob-1 18s ease-in-out infinite; }
+.mesh-blob-2 { animation: mesh-blob-2 22s ease-in-out infinite; }
+.mesh-blob-3 { animation: mesh-blob-3 25s ease-in-out infinite; }
+
+/* ─── Shimmer sweep ─── */
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.animate-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+  animation: shimmer-sweep 3s ease-in-out infinite;
+}
+
+/* ─── Gradient shift ─── */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  25% { background-position: 100% 50%; }
+  50% { background-position: 100% 100%; }
+  75% { background-position: 0% 100%; }
+}
+.animate-gradient-shift {
+  animation: gradient-shift 12s ease infinite;
+}
+
+/* ─── WhatsApp pulse ─── */
+@keyframes wa-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.4); opacity: 0; }
+}
+.animate-wa-pulse {
+  animation: wa-pulse 2.5s ease-in-out infinite;
+}
+
+/* ─── Truck drive ─── */
+@keyframes truck-drive {
+  0% { transform: translateX(-20px); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+.animate-truck-drive {
+  animation: truck-drive 1.5s ease-out forwards;
+  animation-delay: 2s;
+  opacity: 0;
+}
+
+/* ─── Diagonal lines pattern (CTA) ─── */
+@keyframes diagonal-slide {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 40px; }
+}
+.animate-diagonal-lines {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255,255,255,0.03) 0px,
+    rgba(255,255,255,0.03) 1px,
+    transparent 1px,
+    transparent 20px
+  );
+  animation: diagonal-slide 4s linear infinite;
+}
+
+/* ─── Confetti ─── */
+@keyframes confetti-fall {
+  0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+
+/* ─── Card shadow tokens ─── */
+.shadow-card {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 8px 30px rgba(0,0,0,0.04);
+}
+.shadow-card-hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03), 0 20px 50px rgba(0,0,0,0.08);
+}
