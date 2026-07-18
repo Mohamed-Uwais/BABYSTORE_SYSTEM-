@@ -17,4 +17,12 @@ router.delete('/:id', productController.deleteProduct);
 router.get('/:id/has-orders', productController.checkOrderHistory);
 router.post('/upload-image', upload.single('image'), productController.uploadImage);
 
+// Product images CRUD
+router.get('/:id/images', productController.getProductImages);
+router.post('/:id/images', upload.single('image'), productController.addProductImage);
+router.post('/:id/images/url', productController.addProductImageByUrl);
+router.put('/:id/images/reorder', productController.reorderImages);
+router.put('/images/:imageId/primary', productController.setImagePrimary);
+router.delete('/images/:imageId', productController.deleteProductImage);
+
 module.exports = router;

@@ -1,50 +1,16 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Minus, Plus, ChevronRight, AlertCircle, Check, Truck, ShieldCheck, Loader2, MessageCircle } from 'lucide-react';
 import api from '../api/client';
 import { useCart } from '../context/CartContext';
 import ProductCard from '../components/ProductCard';
+import ImageGallery from '../components/ImageGallery';
 import SEO from '../components/SEO';
 import { usePromo } from '../context/PromoContext';
 
-const placeholder = 'data:image/svg+xml,' + encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600"><rect fill="#f0f9ff" width="600" height="600"/><g opacity=".35"><rect x="180" y="150" width="240" height="300" rx="24" fill="#bae6fd"/><text x="300" y="310" text-anchor="middle" font-family="system-ui" font-size="40" font-weight="600" fill="#0ea5e9">LD</text></g></svg>`
-);
-
 function formatPrice(amount) {
   return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-function ImageZoom({ src, alt }) {
-  const containerRef = useRef(null);
-  const [zoomed, setZoomed] = useState(false);
-  const [pos, setPos] = useState({ x: 50, y: 50 });
-
-  const handleMove = (e) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setPos({ x, y });
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      className="relative aspect-square overflow-hidden rounded-3xl border border-slate-100/80 bg-white shadow-card cursor-zoom-in"
-      onMouseEnter={() => setZoomed(true)}
-      onMouseLeave={() => setZoomed(false)}
-      onMouseMove={handleMove}
-    >
-      <img
-        src={src || placeholder}
-        alt={alt}
-        className="h-full w-full object-cover transition-transform duration-300"
-        style={zoomed ? { transform: 'scale(1.8)', transformOrigin: `${pos.x}% ${pos.y}%` } : {}}
-      />
-    </div>
-  );
 }
 
 export default function ProductDetail() {
@@ -162,14 +128,14 @@ export default function ProductDetail() {
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="relative"
           >
-            <ImageZoom src={v?.image_url || placeholder} alt={product.name} />
-            {hasDiscount && (
-              <span className="absolute top-4 left-4 rounded-full bg-accent-500 px-4 py-1.5 text-sm font-bold text-white shadow-md">
-                {discountPercent ? `-${discountPercent}%` : 'SALE'}
-              </span>
-            )}
+            <ImageGallery
+              images={product.images}
+              variantImageUrl={v?.image_url}
+              productName={product.name}
+              hasDiscount={hasDiscount}
+              discountLabel={discountPercent ? `-${discountPercent}%` : 'SALE'}
+            />
           </motion.div>
 
           {/* Product Info */}

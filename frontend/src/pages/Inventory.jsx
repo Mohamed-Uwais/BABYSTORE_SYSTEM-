@@ -21,6 +21,110 @@ function ScanIcon({ className = 'h-4 w-4' }) {
   );
 }
 
+function MultiImageManager({ productId, images, onChange, maxImages = 5 }) {
+  const [uploading, setUploading] = useState(false);
+  const toast = useToast();
+
+  async function handleUpload(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    if (images.length + files.length > maxImages) {
+      toast.error(`Maximum ${maxImages} images allowed`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const newImages = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('image', file);
+        if (productId) {
+          const res = await client.post(`/products/${productId}/images`, fd);
+          newImages.push(res.data.data);
+        } else {
+          const res = await client.post('/products/upload-image', fd);
+          newImages.push({ image_url: res.data.data.image_url, sort_order: images.length + newImages.length, is_primary: images.length === 0 && newImages.length === 0 });
+        }
+      }
+      onChange([...images, ...newImages]);
+    } catch { toast.error('Image upload failed'); }
+    finally { setUploading(false); e.target.value = ''; }
+  }
+
+  function moveImage(idx, dir) {
+    const arr = [...images];
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= arr.length) return;
+    [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+    arr.forEach((img, i) => { img.sort_order = i; });
+    onChange(arr);
+    if (productId) {
+      client.put(`/products/${productId}/images/reorder`, { images: arr.map(im => ({ id: im.id, sort_order: im.sort_order })) }).catch(() => {});
+    }
+  }
+
+  async function setPrimary(idx) {
+    const arr = images.map((img, i) => ({ ...img, is_primary: i === idx }));
+    onChange(arr);
+    if (productId && arr[idx].id) {
+      await client.put(`/products/images/${arr[idx].id}/primary`, { product_id: productId }).catch(() => {});
+    }
+  }
+
+  async function removeImage(idx) {
+    const img = images[idx];
+    if (productId && img.id) {
+      await client.delete(`/products/images/${img.id}`).catch(() => {});
+    }
+    const arr = images.filter((_, i) => i !== idx);
+    if (img.is_primary && arr.length > 0) arr[0].is_primary = true;
+    onChange(arr);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Product Images ({images.length}/{maxImages})</p>
+        {images.length < maxImages && (
+          <label className="cursor-pointer text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
+            {uploading ? 'Uploading...' : '+ Add Images'}
+            <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
+          </label>
+        )}
+      </div>
+      {images.length === 0 ? (
+        <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 py-6 text-slate-400 transition hover:border-brand-400 hover:text-brand-500 dark:border-slate-600">
+          <svg className="mb-1 h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+          <span className="text-xs font-medium">Drop images here or click to upload</span>
+          <span className="mt-0.5 text-[10px]">Up to {maxImages} images (JPEG, PNG, WebP)</span>
+          <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
+        </label>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {images.map((img, idx) => (
+            <div key={img.id || img.image_url} className={`group relative h-20 w-20 rounded-xl border-2 overflow-hidden ${img.is_primary ? 'border-brand-500 ring-2 ring-brand-200' : 'border-slate-200 dark:border-slate-700'}`}>
+              <img src={img.image_url} alt="" className="h-full w-full object-cover" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-black/50 opacity-0 transition group-hover:opacity-100">
+                {!img.is_primary && (
+                  <button type="button" onClick={() => setPrimary(idx)} className="rounded bg-white/90 px-1.5 py-0.5 text-[9px] font-bold text-slate-700 hover:bg-white">★ Primary</button>
+                )}
+                <div className="flex gap-1">
+                  {idx > 0 && <button type="button" onClick={() => moveImage(idx, -1)} className="rounded bg-white/90 px-1 py-0.5 text-[10px] text-slate-700 hover:bg-white">←</button>}
+                  {idx < images.length - 1 && <button type="button" onClick={() => moveImage(idx, 1)} className="rounded bg-white/90 px-1 py-0.5 text-[10px] text-slate-700 hover:bg-white">→</button>}
+                </div>
+                <button type="button" onClick={() => removeImage(idx)} className="rounded bg-red-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white hover:bg-red-600">✕</button>
+              </div>
+              {img.is_primary && (
+                <span className="absolute bottom-0 inset-x-0 bg-brand-600 text-center text-[8px] font-bold text-white py-0.5">PRIMARY</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const BLANK_VARIANT = {
   sku: '', barcode: '', variant_label: '', cost_price: '', wholesale_price: '',
   retail_price: '', mrp: '', current_stock: '', low_stock_threshold: '', image_url: '',
@@ -99,7 +203,7 @@ export default function Inventory() {
       if (!map.has(row.id)) {
         map.set(row.id, { id: row.id, name: row.name, category_name: row.category_name, brand_name: row.brand_name,
           category_id: row.category_id, brand_id: row.brand_id, description: row.description,
-          is_active: row.is_active, tags: row.tags || [], variants: [] });
+          is_active: row.is_active, tags: row.tags || [], images: row.images || [], variants: [] });
       }
       if (row.variant_id) map.get(row.id).variants.push(row);
     }
@@ -210,7 +314,7 @@ export default function Inventory() {
 
       {adjustFor && <AdjustDrawer variant={adjustFor} onClose={() => setAdjustFor(null)} onDone={() => { setAdjustFor(null); loadAll(); toast.success('Stock adjusted'); }} onError={setError} />}
       {historyFor && <HistoryDrawer variant={historyFor} onClose={() => setHistoryFor(null)} />}
-      {editingProduct && <EditProductDrawer product={editingProduct} categories={categories} brands={brands} onClose={() => setEditingProduct(null)} onSaved={() => { setEditingProduct(null); loadAll(); toast.success('Product updated'); }} />}
+      {editingProduct && <EditProductDrawer product={editingProduct} categories={categories} brands={brands} initialImages={editingProduct.images || []} onClose={() => setEditingProduct(null)} onSaved={() => { setEditingProduct(null); loadAll(); toast.success('Product updated'); }} />}
       {editingVariant && <EditVariantDrawer variant={editingVariant} onClose={() => setEditingVariant(null)} onSaved={() => { setEditingVariant(null); loadAll(); toast.success('Variant updated'); }} />}
       {confirmDelete && <ConfirmDeleteModal item={confirmDelete} onClose={() => setConfirmDelete(null)} onConfirm={() => confirmDelete.type === 'product' ? handleDeleteProduct(confirmDelete.item) : handleDeleteVariant(confirmDelete.item)} />}
     </PageWrapper>
@@ -284,7 +388,7 @@ function VariantRow({ v, onEdit, onAdjust, onHistory, onDelete, onPriceUpdate, c
   );
 }
 
-function EditProductDrawer({ product, categories, brands, onClose, onSaved }) {
+function EditProductDrawer({ product, categories, brands, onClose, onSaved, initialImages }) {
   const [form, setForm] = useState({
     name: product.name,
     category_id: product.category_id || '',
@@ -294,11 +398,15 @@ function EditProductDrawer({ product, categories, brands, onClose, onSaved }) {
   });
   const [allTags, setAllTags] = useState([]);
   const [selectedTagIds, setSelectedTagIds] = useState(product.tags.map(t => t.id || t.tag_id));
+  const [productImages, setProductImages] = useState(initialImages || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     client.get('/tags').then(r => setAllTags(r.data.data || [])).catch(() => {});
+    if (!initialImages) {
+      client.get(`/products/${product.id}/images`).then(r => setProductImages(r.data.data || [])).catch(() => {});
+    }
   }, []);
 
   async function save() {
@@ -346,6 +454,7 @@ function EditProductDrawer({ product, categories, brands, onClose, onSaved }) {
             </div>
           </div>
         )}
+        <MultiImageManager productId={product.id} images={productImages} onChange={setProductImages} />
         <button onClick={save} disabled={saving} className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50">
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
@@ -499,6 +608,7 @@ function AddProductForm({ categories, brands, onCreated, onError, onCatalogChang
   const [scanForIdx, setScanForIdx] = useState(null);
   const [newCategory, setNewCategory] = useState('');
   const [newBrand, setNewBrand] = useState('');
+  const [productImages, setProductImages] = useState([]);
   const [allTags, setAllTags] = useState([]);
   const [selectedTagIds, setSelectedTagIds] = useState([]);
 
@@ -565,7 +675,7 @@ function AddProductForm({ categories, brands, onCreated, onError, onCatalogChang
     if (!variants.every((v) => v.sku && v.variant_label)) return onError('Every variant needs at least a SKU and a label');
     setSubmitting(true);
     try {
-      await client.post('/products/full', {
+      const res = await client.post('/products/full', {
         category_id: Number(categoryId), brand_id: brandId ? Number(brandId) : null, name, description,
         low_stock_threshold: Number(lowThreshold) || 5, tag_ids: selectedTagIds,
         variants: variants.map((v) => ({
@@ -578,6 +688,15 @@ function AddProductForm({ categories, brands, onCreated, onError, onCatalogChang
           })),
         })),
       });
+      if (productImages.length > 0 && res.data.id) {
+        const pid = res.data.id;
+        for (let i = 0; i < productImages.length; i++) {
+          const img = productImages[i];
+          await client.post(`/products/${pid}/images/url`, {
+            image_url: img.image_url, sort_order: i, is_primary: i === 0,
+          }).catch(() => {});
+        }
+      }
       onCreated();
     } catch (err) { onError(err.response?.data?.message ?? 'Could not create product'); }
     finally { setSubmitting(false); }
@@ -622,6 +741,8 @@ function AddProductForm({ categories, brands, onCreated, onError, onCatalogChang
           </div>
         </div>
       )}
+
+      <MultiImageManager productId={null} images={productImages} onChange={setProductImages} />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

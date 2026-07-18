@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const imageModel = require('./productImageModel');
 
 async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSale, sort, search, limit = 24, offset = 0 }) {
   let where = 'p.is_active = TRUE AND pv.is_active = TRUE';
@@ -71,6 +72,16 @@ async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSal
 
   const [products] = await db.query(dataSQL, [...params, Number(limit), Number(offset)]);
 
+  const productIds = products.map(p => p.id);
+  const imgMap = await imageModel.getImagesByProductIds(productIds);
+  for (const p of products) {
+    const imgs = imgMap[p.id] || [];
+    if (imgs.length) {
+      p.image_url = imgs[0].image_url;
+      p.second_image_url = imgs[1]?.image_url || null;
+    }
+  }
+
   return { products, total, limit: Number(limit), offset: Number(offset) };
 }
 
@@ -136,7 +147,9 @@ async function getProductBySlug(slug) {
     LIMIT 4
   `, [product.id, product.id]);
 
-  return { ...product, variants, tags, related };
+  const images = await imageModel.getImagesByProductId(product.id);
+
+  return { ...product, variants, tags, related, images };
 }
 
 async function getCategories() {
@@ -201,9 +214,23 @@ async function getBestSellers(limit = 8) {
       ORDER BY p.created_at DESC
       LIMIT ?
     `, [limit]);
+    await _attachSecondImage(fallback);
     return fallback;
   }
+  await _attachSecondImage(rows);
   return rows;
+}
+
+async function _attachSecondImage(products) {
+  const ids = products.map(p => p.id);
+  const imgMap = await imageModel.getImagesByProductIds(ids);
+  for (const p of products) {
+    const imgs = imgMap[p.id] || [];
+    if (imgs.length) {
+      p.image_url = imgs[0].image_url;
+      p.second_image_url = imgs[1]?.image_url || null;
+    }
+  }
 }
 
 async function getNewArrivals(limit = 8) {
@@ -225,6 +252,7 @@ async function getNewArrivals(limit = 8) {
     ORDER BY p.created_at DESC
     LIMIT ?
   `, [limit]);
+  await _attachSecondImage(rows);
   return rows;
 }
 

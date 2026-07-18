@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const imageModel = require('./productImageModel');
 
 function slugify(text) {
   return String(text)
@@ -54,7 +55,9 @@ async function getAllProducts() {
     }
   }
 
-  return rows.map(r => ({ ...r, tags: tagMap[r.id] || [], price_tiers: tierMap[r.variant_id] || [] }));
+  const imgMap = await imageModel.getImagesByProductIds(productIds);
+
+  return rows.map(r => ({ ...r, tags: tagMap[r.id] || [], price_tiers: tierMap[r.variant_id] || [], images: imgMap[r.id] || [] }));
 }
 
 // Get a single product with all its variants
@@ -216,6 +219,7 @@ async function deleteProduct(id) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    await connection.query(`DELETE FROM product_images WHERE product_id = ?`, [id]);
     await connection.query(`DELETE FROM variant_price_tiers WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)`, [id]);
     await connection.query(`DELETE FROM stock_movements WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)`, [id]);
     await connection.query(`DELETE FROM product_tags WHERE product_id = ?`, [id]);

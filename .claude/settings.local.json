@@ -6,7 +6,8 @@
       "Bash(node src/server.js)",
       "Bash(curl -s \"http://localhost:5001/api/public/products/pampers-premium-care-pants\")",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); v=[x for x in d['data']['variants'] if 'Size L' in x['variant_label']][0]; print\\(f'discounted_price={v[\\\\\"discounted_price\\\\\"]}'\\)\")",
-      "PowerShell(mysql -u root -pMU@mhd2836 babystore_db -e \"SELECT store_name, logo_url, phone, email FROM store_settings LIMIT 1;\" 2>$null)"
+      "PowerShell(mysql -u root -pMU@mhd2836 babystore_db -e \"SELECT store_name, logo_url, phone, email FROM store_settings LIMIT 1;\" 2>$null)",
+      "Bash(curl -s http://localhost:5174/src/pages/ProductDetail.jsx)"
     ]
   }
 }

@@ -1,4 +1,5 @@
 const productModel = require('../models/productModel');
+const imageModel = require('../models/productImageModel');
 
 async function listProducts(req, res) {
   try {
@@ -142,9 +143,85 @@ async function checkOrderHistory(req, res) {
   }
 }
 
+async function getProductImages(req, res) {
+  try {
+    const images = await imageModel.getImagesByProductId(req.params.id);
+    res.json({ success: true, data: images });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to fetch images' });
+  }
+}
+
+async function addProductImage(req, res) {
+  if (!req.file) return res.status(400).json({ success: false, message: 'No image file received' });
+  try {
+    const imageUrl = `/uploads/${req.file.filename}`;
+    const existing = await imageModel.getImagesByProductId(req.params.id);
+    const id = await imageModel.addImage(req.params.id, {
+      variant_id: req.body.variant_id || null,
+      image_url: imageUrl,
+      sort_order: existing.length,
+      is_primary: existing.length === 0,
+    });
+    res.status(201).json({ success: true, data: { id, image_url: imageUrl, is_primary: existing.length === 0, sort_order: existing.length } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to add image' });
+  }
+}
+
+async function addProductImageByUrl(req, res) {
+  try {
+    const { image_url, sort_order, is_primary, variant_id } = req.body;
+    if (!image_url) return res.status(400).json({ success: false, message: 'image_url required' });
+    const id = await imageModel.addImage(req.params.id, {
+      variant_id: variant_id || null,
+      image_url,
+      sort_order: sort_order || 0,
+      is_primary: is_primary || false,
+    });
+    res.status(201).json({ success: true, data: { id, image_url, is_primary: is_primary || false, sort_order: sort_order || 0 } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to add image' });
+  }
+}
+
+async function reorderImages(req, res) {
+  try {
+    await imageModel.updateSortOrder(req.body.images);
+    res.json({ success: true, message: 'Reordered' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Reorder failed' });
+  }
+}
+
+async function setImagePrimary(req, res) {
+  try {
+    await imageModel.setPrimary(req.params.imageId, req.body.product_id);
+    res.json({ success: true, message: 'Primary image set' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to set primary' });
+  }
+}
+
+async function deleteProductImage(req, res) {
+  try {
+    await imageModel.deleteImage(req.params.imageId);
+    res.json({ success: true, message: 'Image deleted' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to delete image' });
+  }
+}
+
 module.exports = {
   listProducts, getProduct, addProduct, addProductWithVariants,
   editProduct, editVariant, uploadImage, lowStock,
   deleteProduct, deleteVariant, checkOrderHistory,
   getPriceTiers, savePriceTiers,
+  getProductImages, addProductImage, addProductImageByUrl, reorderImages, setImagePrimary, deleteProductImage,
 };

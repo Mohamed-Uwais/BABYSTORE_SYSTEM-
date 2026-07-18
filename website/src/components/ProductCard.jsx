@@ -16,7 +16,8 @@ function formatPrice(amount) {
 export default function ProductCard({ product, index = 0 }) {
   const {
     id, name, slug, brand_name, retail_price, image_url,
-    in_stock, on_sale, discounted_price, min_discounted_price, variant_count, has_tiers
+    in_stock, on_sale, discounted_price, min_discounted_price, variant_count, has_tiers,
+    second_image_url,
   } = product;
 
   const { addItem } = useCart();
@@ -82,8 +83,16 @@ export default function ProductCard({ product, index = 0 }) {
               alt={name}
               loading="lazy"
               onLoad={() => setImgLoaded(true)}
-              className={`h-full w-full object-cover transition-all duration-500 group-hover:scale-105 ${imgLoaded ? '' : 'blur-sm scale-105'}`}
+              className={`h-full w-full object-cover transition-all duration-500 ${second_image_url ? 'group-hover:opacity-0' : 'group-hover:scale-105'} ${imgLoaded ? '' : 'blur-sm scale-105'}`}
             />
+            {second_image_url && (
+              <img
+                src={second_image_url}
+                alt={name}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+              />
+            )}
 
             {/* Out of stock overlay */}
             {!in_stock && (
