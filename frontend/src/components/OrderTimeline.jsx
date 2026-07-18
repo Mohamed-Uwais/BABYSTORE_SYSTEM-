@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import client from '../api/client';
 
-const STEPS_DELIVERY = ['completed', 'confirmed', 'processing', 'packed', 'shipped', 'delivered'];
+const STEPS_DELIVERY = ['pending', 'confirmed', 'processing', 'packed', 'shipped', 'delivered'];
 const STEPS_PICKUP = ['completed'];
 const STEP_LABELS = {
-  completed: 'Placed', confirmed: 'Confirmed', processing: 'Processing',
+  pending: 'Placed', completed: 'Completed', confirmed: 'Confirmed', processing: 'Processing',
   packed: 'Packed', shipped: 'Shipped', delivered: 'Delivered',
   cancelled: 'Cancelled', refunded: 'Refunded', partially_refunded: 'Partial Refund',
 };
@@ -38,7 +38,7 @@ export default function OrderTimeline({ orderId, fulfillmentType }) {
     if (!historyMap[h.status]) historyMap[h.status] = h;
   }
 
-  const currentStatus = history.length > 0 ? history[history.length - 1].status : 'completed';
+  const currentStatus = history.length > 0 ? history[0].status : 'completed';
   const isCancelled = currentStatus === 'cancelled';
   const isRefunded = ['refunded', 'partially_refunded'].includes(currentStatus);
   const currentIdx = steps.indexOf(currentStatus);

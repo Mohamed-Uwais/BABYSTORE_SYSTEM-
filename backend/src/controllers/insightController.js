@@ -37,7 +37,7 @@ async function getOrderTimeline(req, res) {
        FROM order_status_history osh
        LEFT JOIN users u ON u.id = osh.changed_by
        WHERE osh.order_id = ?
-       ORDER BY osh.created_at ASC`,
+       ORDER BY osh.created_at DESC`,
       [req.params.id]
     );
     res.json({ success: true, data: rows });
@@ -48,9 +48,13 @@ async function updateOrderStatus(req, res) {
   try {
     const { status, notes } = req.body;
     const orderId = req.params.id;
-    const validStatuses = ['confirmed', 'processing', 'packed', 'shipped', 'delivered', 'completed', 'cancelled'];
+    const validStatuses = ['pending', 'confirmed', 'processing', 'packed', 'shipped', 'delivered', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+    const [[current]] = await db.query('SELECT status FROM orders WHERE id = ?', [orderId]);
+    if (current && current.status === status) {
+      return res.json({ success: true, message: 'Already at this status' });
     }
     await db.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
     await db.query(

@@ -93,8 +93,9 @@ async function createOrder(payload) {
       `INSERT INTO orders
         (order_number, channel, customer_id, cashier_id, status, subtotal, discount_total,
          delivery_fee, grand_total, fulfillment_type, delivery_address, delivery_zone_id, notes)
-       VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number, channel, customer_id || null, cashier_id || null, subtotal, discount_total,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order_number, channel, customer_id || null, cashier_id || null,
+       channel === 'pos' ? 'completed' : 'pending', subtotal, discount_total,
        delivery_fee, grand_total, fulfillment_type || 'pickup', delivery_address || null,
        delivery_zone_id || null, notes || null]
     );
@@ -171,9 +172,10 @@ async function createOrder(payload) {
     }
 
     // --- 9. Log initial status in history ---
+    const initialStatus = channel === 'pos' ? 'completed' : 'pending';
     await connection.query(
       'INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)',
-      [orderId, 'completed', cashier_id || null, 'Order created']
+      [orderId, initialStatus, cashier_id || null, 'Order created']
     );
 
     await connection.commit();

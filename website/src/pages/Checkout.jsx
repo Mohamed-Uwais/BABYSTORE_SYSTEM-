@@ -311,8 +311,8 @@ export default function Checkout() {
                     <div className="rounded-xl bg-primary-50 p-4 text-sm text-primary-800">
                       <p className="font-semibold">Bank Details:</p>
                       <p className="mt-1">Bank: Commercial Bank</p>
-                      <p>Account: 123456789</p>
-                      <p>Name: Littora Diapers</p>
+                      <p>Account: 8011889232</p>
+                      <p>Name: Mohamed M.U</p>
                     </div>
 
                     {/* Payment slip upload */}

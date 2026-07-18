@@ -287,7 +287,7 @@ async function trackOrder(orderNumber, phone) {
   `, [order.id]);
 
   const [history] = await db.query(`
-    SELECT status, notes, created_at FROM order_status_history WHERE order_id = ? ORDER BY created_at ASC
+    SELECT status, notes, created_at FROM order_status_history WHERE order_id = ? ORDER BY created_at DESC
   `, [order.id]);
 
   return { ...order, items, payments, delivery: delivery[0] || null, history };
