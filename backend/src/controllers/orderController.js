@@ -94,4 +94,34 @@ async function returnExchange(req, res) {
   }
 }
 
-module.exports = { checkout, getOrder, listOrders, bestSellers, refundOrder, getReturns, searchForReturn, getReturnItems, returnExchange };
+async function getPendingOrders(req, res) {
+  try {
+    const orders = await orderModel.getPendingOrders();
+    res.json({ success: true, data: orders });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to fetch pending orders' });
+  }
+}
+
+async function acceptOrder(req, res) {
+  try {
+    await orderModel.acceptOrder(parseInt(req.params.id), req.user?.id);
+    res.json({ success: true, message: 'Order accepted' });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
+
+async function rejectOrder(req, res) {
+  try {
+    await orderModel.rejectOrder(parseInt(req.params.id), req.user?.id, req.body.reason);
+    res.json({ success: true, message: 'Order rejected' });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
+
+module.exports = { checkout, getOrder, listOrders, bestSellers, refundOrder, getReturns, searchForReturn, getReturnItems, returnExchange, getPendingOrders, acceptOrder, rejectOrder };

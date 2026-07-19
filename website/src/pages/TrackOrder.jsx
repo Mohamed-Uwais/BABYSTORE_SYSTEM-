@@ -117,6 +117,20 @@ export default function TrackOrder() {
                   <p className="text-sm text-slate-500">Order #{order.order_number}</p>
                 </div>
               </div>
+              {order.status === 'pending' && (
+                <p className="mt-3 text-sm text-amber-700">Your order is being reviewed by our team. We'll confirm it shortly.</p>
+              )}
+              {order.status === 'confirmed' && (
+                <p className="mt-3 text-sm text-blue-700">Order confirmed! We're preparing your package.</p>
+              )}
+              {order.status === 'cancelled' && (
+                <div className="mt-3">
+                  <p className="text-sm font-medium text-red-700">Sorry, your order could not be processed.</p>
+                  {order.history?.find(h => h.status === 'cancelled')?.notes && (
+                    <p className="mt-1 text-sm text-red-600">Reason: {order.history.find(h => h.status === 'cancelled').notes}</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Order details */}

@@ -25,6 +25,7 @@ export default function AppHeader() {
 
   const [lowStockItems, setLowStockItems] = useState([]);
   const [packingQueue, setPackingQueue] = useState([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const [showLowStock, setShowLowStock] = useState(false);
   const [showPacking, setShowPacking] = useState(false);
   const [markingPacked, setMarkingPacked] = useState(null);
@@ -40,6 +41,7 @@ export default function AppHeader() {
   const fetchAlerts = useCallback(() => {
     client.get('/insights/low-stock-reorder').then(r => setLowStockItems(r.data.data || [])).catch(() => {});
     client.get('/insights/packing-queue').then(r => setPackingQueue(r.data.data || [])).catch(() => {});
+    client.get('/orders/pending').then(r => setPendingCount((r.data.data || []).length)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -63,9 +65,12 @@ export default function AppHeader() {
       if (packingQueue.length > 0) {
         toast.info(`You have ${packingQueue.length} orders to pack!`);
       }
+      if (pendingCount > 0) {
+        toast.warning(`🛒 ${pendingCount} new order${pendingCount > 1 ? 's' : ''} awaiting approval`);
+      }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [lowStockItems.length, packingQueue.length]);
+  }, [lowStockItems.length, packingQueue.length, pendingCount]);
 
   async function markAsPacked(orderId) {
     setMarkingPacked(orderId);
@@ -138,6 +143,18 @@ export default function AppHeader() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Pending orders */}
+          {user?.role === 'owner' && pendingCount > 0 && (
+            <button onClick={() => navigate('/orders')}
+              className="relative rounded-lg p-2 text-amber-500 transition hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              title={`${pendingCount} orders awaiting approval`}>
+              <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
+              </svg>
+              <Badge count={pendingCount} urgent />
+            </button>
+          )}
+
           {/* Packing queue icon */}
           {user?.role === 'owner' && (
             <button onClick={() => { setShowPacking(v => !v); setShowLowStock(false); }}

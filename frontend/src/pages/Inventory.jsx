@@ -23,21 +23,26 @@ function ScanIcon({ className = 'h-4 w-4' }) {
 
 function MultiImageManager({ productId, images, onChange, maxImages = 5 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const toast = useToast();
+  const fileRef = useCallback((node) => { if (node) node.value = ''; }, []);
 
   async function handleUpload(e) {
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    if (images.length + files.length > maxImages) {
-      toast.error(`Maximum ${maxImages} images allowed`);
+    const allowed = maxImages - images.length;
+    if (files.length > allowed) {
+      toast.error(`Can only add ${allowed} more image${allowed !== 1 ? 's' : ''} (max ${maxImages})`);
+      e.target.value = '';
       return;
     }
     setUploading(true);
-    try {
-      const newImages = [];
-      for (const file of files) {
+    const newImages = [];
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress(`Uploading ${i + 1}/${files.length}...`);
+      try {
         const fd = new FormData();
-        fd.append('image', file);
+        fd.append('image', files[i]);
         if (productId) {
           const res = await client.post(`/products/${productId}/images`, fd);
           newImages.push(res.data.data);
@@ -45,10 +50,12 @@ function MultiImageManager({ productId, images, onChange, maxImages = 5 }) {
           const res = await client.post('/products/upload-image', fd);
           newImages.push({ image_url: res.data.data.image_url, sort_order: images.length + newImages.length, is_primary: images.length === 0 && newImages.length === 0 });
         }
-      }
-      onChange([...images, ...newImages]);
-    } catch { toast.error('Image upload failed'); }
-    finally { setUploading(false); e.target.value = ''; }
+      } catch { toast.error(`Failed to upload image ${i + 1}`); }
+    }
+    if (newImages.length) onChange([...images, ...newImages]);
+    setUploading(false);
+    setUploadProgress('');
+    e.target.value = '';
   }
 
   function moveImage(idx, dir) {
@@ -87,16 +94,22 @@ function MultiImageManager({ productId, images, onChange, maxImages = 5 }) {
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Product Images ({images.length}/{maxImages})</p>
         {images.length < maxImages && (
           <label className="cursor-pointer text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
-            {uploading ? 'Uploading...' : '+ Add Images'}
+            {uploading ? uploadProgress : '+ Add Images'}
             <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
           </label>
         )}
       </div>
       {images.length === 0 ? (
-        <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 py-6 text-slate-400 transition hover:border-brand-400 hover:text-brand-500 dark:border-slate-600">
-          <svg className="mb-1 h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-          <span className="text-xs font-medium">Drop images here or click to upload</span>
-          <span className="mt-0.5 text-[10px]">Up to {maxImages} images (JPEG, PNG, WebP)</span>
+        <label className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed py-6 transition ${uploading ? 'border-brand-400 text-brand-500' : 'border-slate-300 text-slate-400 hover:border-brand-400 hover:text-brand-500'} dark:border-slate-600`}>
+          {uploading ? (
+            <span className="text-xs font-medium">{uploadProgress}</span>
+          ) : (
+            <>
+              <svg className="mb-1 h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              <span className="text-xs font-medium">Click to select images (2–5 recommended)</span>
+              <span className="mt-0.5 text-[10px]">JPEG, PNG, WebP · select multiple files at once</span>
+            </>
+          )}
           <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
       ) : (

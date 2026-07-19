@@ -101,7 +101,8 @@ async function createOrder(payload) {
     );
     const orderId = orderResult.insertId;
 
-    // --- 5. Insert order_items, deduct stock, log stock_movements ---
+    // --- 5. Insert order_items; deduct stock only for POS (website/chatbot wait for acceptance) ---
+    const isPOS = channel === 'pos';
     for (const item of items) {
       const line_total = (item.unit_price * item.quantity) - (item.discount_amount || 0);
 
@@ -111,16 +112,17 @@ async function createOrder(payload) {
         [orderId, item.variant_id, item.quantity, item.unit_price, item.discount_amount || 0, line_total, item._cost_price]
       );
 
-      await connection.query(
-        'UPDATE product_variants SET current_stock = current_stock - ? WHERE id = ?',
-        [item.quantity, item.variant_id]
-      );
-
-      await connection.query(
-        `INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id, created_by)
-         VALUES (?, ?, 'sale', 'order', ?, ?)`,
-        [item.variant_id, -item.quantity, orderId, cashier_id || null]
-      );
+      if (isPOS) {
+        await connection.query(
+          'UPDATE product_variants SET current_stock = current_stock - ? WHERE id = ?',
+          [item.quantity, item.variant_id]
+        );
+        await connection.query(
+          `INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id, created_by)
+           VALUES (?, ?, 'sale', 'order', ?, ?)`,
+          [item.variant_id, -item.quantity, orderId, cashier_id || null]
+        );
+      }
     }
 
     // --- 6. Insert payments ---
@@ -132,8 +134,8 @@ async function createOrder(payload) {
       );
     }
 
-    // --- 7. Loyalty points + credit ledger (only for registered customers) ---
-    if (customer_id) {
+    // --- 7. Loyalty points + credit ledger (only for POS orders with registered customers) ---
+    if (customer_id && isPOS) {
       const pointsEarned = Math.floor(grand_total / 100); // 1 point per 100 LKR - tune as needed
 
       if (pointsEarned > 0) {
@@ -447,4 +449,105 @@ async function getOrderItemsForReturn(orderId) {
   return items.map(i => ({ ...i, returnable: i.quantity - i.already_returned }));
 }
 
-module.exports = { createOrder, getOrderById, getAllOrders, getBestSellers, processRefund, getOrderReturns, processReturnExchange, searchOrderForReturn, getOrderItemsForReturn };
+async function acceptOrder(orderId, acceptedBy) {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [[order]] = await connection.query(
+      'SELECT id, status, order_number, customer_id, grand_total FROM orders WHERE id = ? FOR UPDATE', [orderId]
+    );
+    if (!order) throw new Error('Order not found');
+    if (order.status !== 'pending') throw new Error(`Cannot accept order with status "${order.status}"`);
+
+    const [items] = await connection.query(
+      'SELECT variant_id, quantity FROM order_items WHERE order_id = ?', [orderId]
+    );
+
+    for (const item of items) {
+      const [[variant]] = await connection.query(
+        'SELECT current_stock FROM product_variants WHERE id = ? FOR UPDATE', [item.variant_id]
+      );
+      if (!variant || variant.current_stock < item.quantity) {
+        throw new Error(`Insufficient stock for variant ${item.variant_id}: have ${variant?.current_stock || 0}, need ${item.quantity}`);
+      }
+      await connection.query(
+        'UPDATE product_variants SET current_stock = current_stock - ? WHERE id = ?',
+        [item.quantity, item.variant_id]
+      );
+      await connection.query(
+        `INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id, created_by)
+         VALUES (?, ?, 'sale', 'order', ?, ?)`,
+        [item.variant_id, -item.quantity, orderId, acceptedBy || null]
+      );
+    }
+
+    await connection.query('UPDATE orders SET status = ? WHERE id = ?', ['confirmed', orderId]);
+    await connection.query(
+      'INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)',
+      [orderId, 'confirmed', acceptedBy || null, 'Order accepted']
+    );
+
+    if (order.customer_id) {
+      const pointsEarned = Math.floor(order.grand_total / 100);
+      if (pointsEarned > 0) {
+        await customerModel.addLedgerEntry(connection, {
+          customer_id: order.customer_id, entry_type: 'points_earned', points_delta: pointsEarned,
+          reference_type: 'order', reference_id: orderId,
+          notes: `Points earned from order ${order.order_number}`, created_by: acceptedBy
+        });
+      }
+    }
+
+    await connection.commit();
+    return { success: true };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function rejectOrder(orderId, rejectedBy, rejectionReason) {
+  const [[order]] = await db.query(
+    'SELECT id, status FROM orders WHERE id = ?', [orderId]
+  );
+  if (!order) throw new Error('Order not found');
+  if (order.status !== 'pending') throw new Error(`Cannot reject order with status "${order.status}"`);
+
+  await db.query('UPDATE orders SET status = ? WHERE id = ?', ['cancelled', orderId]);
+  await db.query(
+    'INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)',
+    [orderId, 'cancelled', rejectedBy || null, `Rejected: ${rejectionReason || 'No reason given'}`]
+  );
+  return { success: true };
+}
+
+async function getPendingOrders() {
+  const [orders] = await db.query(`
+    SELECT o.id, o.order_number, o.channel, o.status, o.subtotal, o.discount_total,
+           o.delivery_fee, o.grand_total, o.fulfillment_type, o.delivery_address,
+           o.created_at, o.notes,
+           c.full_name AS customer_name, c.phone AS customer_phone
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customer_id
+    WHERE o.status = 'pending'
+    ORDER BY o.created_at ASC
+  `);
+  for (const order of orders) {
+    const [items] = await db.query(
+      `SELECT oi.variant_id, oi.quantity, oi.unit_price, oi.line_total,
+              pv.variant_label, pv.sku, pv.current_stock, p.name AS product_name
+       FROM order_items oi
+       JOIN product_variants pv ON pv.id = oi.variant_id
+       JOIN products p ON p.id = pv.product_id
+       WHERE oi.order_id = ?`, [order.id]
+    );
+    order.items = items;
+    order.has_stock_issue = items.some(i => i.current_stock < i.quantity);
+  }
+  return orders;
+}
+
+module.exports = { createOrder, getOrderById, getAllOrders, getBestSellers, processRefund, getOrderReturns, processReturnExchange, searchOrderForReturn, getOrderItemsForReturn, acceptOrder, rejectOrder, getPendingOrders };

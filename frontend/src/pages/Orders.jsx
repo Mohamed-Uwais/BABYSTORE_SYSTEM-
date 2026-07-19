@@ -34,12 +34,22 @@ const PAYMENT_LABELS = {
   store_credit: 'Store Credit', online_gateway: 'Online',
 };
 
+const REJECT_REASONS = ['Out of stock', 'Invalid address', 'Suspicious order', 'Customer requested cancellation'];
+
 export default function Orders() {
   const toast = useToast();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const [pendingOrders, setPendingOrders] = useState([]);
+  const [accepting, setAccepting] = useState(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectOrderId, setRejectOrderId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectCustom, setRejectCustom] = useState('');
+  const [rejecting, setRejecting] = useState(false);
 
   const [refundOpen, setRefundOpen] = useState(false);
   const [refundItem, setRefundItem] = useState(null);
@@ -58,6 +68,7 @@ export default function Orders() {
 
   useEffect(() => {
     loadOrders();
+    loadPending();
     client.get('/couriers').then(r => setCouriers(r.data.data || [])).catch(() => {});
   }, []);
 
@@ -66,6 +77,50 @@ export default function Orders() {
     const res = await client.get('/orders');
     setOrders(res.data.data);
     setLoading(false);
+  }
+
+  async function loadPending() {
+    try {
+      const res = await client.get('/orders/pending');
+      setPendingOrders(res.data.data || []);
+    } catch {}
+  }
+
+  async function handleAccept(orderId) {
+    setAccepting(orderId);
+    try {
+      await client.post(`/orders/${orderId}/accept`);
+      toast.success('Order accepted — stock deducted');
+      loadPending();
+      loadOrders();
+      if (selectedOrder?.id === orderId) openOrder(orderId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to accept order');
+    } finally { setAccepting(null); }
+  }
+
+  function openRejectModal(orderId) {
+    setRejectOrderId(orderId);
+    setRejectReason('');
+    setRejectCustom('');
+    setRejectOpen(true);
+  }
+
+  async function submitReject(e) {
+    e.preventDefault();
+    const reason = rejectReason === '__custom' ? rejectCustom : rejectReason;
+    if (!reason.trim()) return;
+    setRejecting(true);
+    try {
+      await client.post(`/orders/${rejectOrderId}/reject`, { reason });
+      toast.success('Order rejected');
+      setRejectOpen(false);
+      loadPending();
+      loadOrders();
+      if (selectedOrder?.id === rejectOrderId) openOrder(rejectOrderId);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reject order');
+    } finally { setRejecting(false); }
   }
 
   async function openOrder(id) {
@@ -174,6 +229,44 @@ export default function Orders() {
         {/* Left: order list */}
         <div className={`${selectedOrder ? 'hidden md:block' : ''} overflow-y-auto border-r border-slate-200 p-4 dark:border-slate-800 md:w-1/2 md:p-5`}>
           <h1 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">Order history</h1>
+
+          {pendingOrders.length > 0 && (
+            <div className="mb-4">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">{pendingOrders.length}</span>
+                <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">Awaiting Approval</h2>
+              </div>
+              <div className="space-y-2">
+                {pendingOrders.map((o) => (
+                  <div key={o.id} onClick={() => openOrder(o.id)}
+                    className={`cursor-pointer rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm transition hover:shadow-md dark:border-amber-700 dark:bg-amber-900/20 ${selectedOrder?.id === o.id ? 'ring-2 ring-amber-500' : ''}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-mono font-medium text-slate-900 dark:text-white">{o.order_number}</span>
+                        <span className="ml-2 rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200">{o.channel || 'website'}</span>
+                      </div>
+                      <span className="font-mono font-medium text-slate-700 dark:text-slate-300">{money(o.grand_total)}</span>
+                    </div>
+                    {o.has_stock_issue && (
+                      <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400">⚠️ Some items may be out of stock</p>
+                    )}
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); handleAccept(o.id); }}
+                        disabled={accepting === o.id}
+                        className="flex-1 rounded-lg bg-emerald-600 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50">
+                        {accepting === o.id ? 'Accepting...' : 'Accept'}
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); openRejectModal(o.id); }}
+                        className="flex-1 rounded-lg border border-red-300 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {loading ? <ListSkeleton /> : orders.length === 0 ? (
             <EmptyState icon="📋" title="No orders yet" description="Completed sales will appear here" />
           ) : (
@@ -219,6 +312,23 @@ export default function Orders() {
                   {selectedOrder.status.replace('_', ' ')}
                 </span>
               </div>
+
+              {selectedOrder.status === 'pending' && (
+                <div className="flex items-center gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/20">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Awaiting approval</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">This order was placed via {selectedOrder.channel || 'website'} and needs your review.</p>
+                  </div>
+                  <button onClick={() => handleAccept(selectedOrder.id)} disabled={accepting === selectedOrder.id}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+                    {accepting === selectedOrder.id ? 'Accepting...' : 'Accept'}
+                  </button>
+                  <button onClick={() => openRejectModal(selectedOrder.id)}
+                    className="rounded-lg border border-red-300 px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+                    Reject
+                  </button>
+                </div>
+              )}
 
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 dark:border-slate-700 dark:bg-slate-900">
                 <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Order Timeline</h3>
@@ -376,6 +486,36 @@ export default function Orders() {
             </button>
           </form>
         )}
+      </Modal>
+
+      {/* Reject modal */}
+      <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} title="Reject order">
+        <form onSubmit={submitReject} className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">Select a reason for rejecting this order. The customer will see this reason on their tracking page.</p>
+          <div className="space-y-2">
+            {REJECT_REASONS.map((r) => (
+              <label key={r} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <input type="radio" name="reject_reason" value={r} checked={rejectReason === r}
+                  onChange={() => { setRejectReason(r); setRejectCustom(''); }} className="text-brand-600" />
+                {r}
+              </label>
+            ))}
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input type="radio" name="reject_reason" value="__custom" checked={rejectReason === '__custom'}
+                onChange={() => setRejectReason('__custom')} className="text-brand-600" />
+              Other
+            </label>
+            {rejectReason === '__custom' && (
+              <input type="text" value={rejectCustom} onChange={(e) => setRejectCustom(e.target.value)}
+                placeholder="Enter reason..." autoFocus
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+            )}
+          </div>
+          <button type="submit" disabled={rejecting || (!rejectReason || (rejectReason === '__custom' && !rejectCustom.trim()))}
+            className="w-full rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 active:scale-[0.98] disabled:opacity-50">
+            {rejecting ? 'Rejecting...' : 'Reject Order'}
+          </button>
+        </form>
       </Modal>
 
       {showLabel && selectedOrder && (
