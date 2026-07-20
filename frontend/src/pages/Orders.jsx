@@ -31,7 +31,7 @@ const STATUS_STYLES = {
 
 const PAYMENT_LABELS = {
   cash: 'Cash', card: 'Card', bank_transfer: 'Bank Transfer',
-  store_credit: 'Store Credit', online_gateway: 'Online',
+  store_credit: 'Credit (Pay Later)', online_gateway: 'Online',
 };
 
 const REJECT_REASONS = ['Out of stock', 'Invalid address', 'Suspicious order', 'Customer requested cancellation'];

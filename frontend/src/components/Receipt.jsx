@@ -17,7 +17,7 @@ const PAYMENT_LABELS = {
   cash: 'Cash',
   card: 'Card',
   bank_transfer: 'Bank Transfer',
-  store_credit: 'Store Credit',
+  store_credit: 'Credit (Pay Later)',
   online_gateway: 'Online',
 };
 

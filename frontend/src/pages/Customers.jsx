@@ -250,7 +250,7 @@ export default function Customers() {
                   { label: 'Total Orders', value: detail.total_orders },
                   { label: 'Total Spent', value: money(detail.total_spent), mono: true },
                   { label: 'Loyalty Points', value: detail.loyalty_points_balance },
-                  { label: 'Credit Balance', value: money(detail.credit_balance), mono: true },
+                  { label: 'Outstanding Credit', value: money(detail.credit_balance), mono: true },
                 ].map(s => (
                   <div key={s.label} className="rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/50">
                     <p className={`text-lg font-bold text-slate-900 dark:text-white ${s.mono ? 'font-mono' : ''}`}>{s.value}</p>
@@ -355,7 +355,7 @@ export default function Customers() {
 
       {/* Credit Repayment Modal */}
       <Modal open={repayOpen} onClose={() => setRepayOpen(false)} title="Record Credit Repayment" maxW="max-w-sm">
-        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">Current balance: <span className="font-mono">{money(detail?.credit_balance)}</span></p>
+        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">Outstanding: <span className="font-mono text-red-600 dark:text-red-400">{money(detail?.credit_balance)}</span></p>
         <form onSubmit={submitRepayment} className="space-y-3">
           <div><label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (Rs.)</label>
             <input value={repayAmount} onChange={e => setRepayAmount(e.target.value)} type="number" step="0.01" min="0.01"

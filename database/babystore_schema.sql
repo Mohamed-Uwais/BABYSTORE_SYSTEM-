@@ -230,6 +230,7 @@ CREATE TABLE customers (
     loyalty_tier            ENUM('none', 'silver', 'gold', 'platinum') NOT NULL DEFAULT 'none',
     loyalty_points_balance  INT NOT NULL DEFAULT 0,        -- denormalized, kept in sync by customer_ledger
     credit_balance          DECIMAL(10,2) NOT NULL DEFAULT 0, -- denormalized running balance (positive = customer owes shop)
+    credit_limit            DECIMAL(10,2) DEFAULT NULL,        -- optional max credit allowed (NULL = no limit)
     source_channel           ENUM('pos', 'whatsapp', 'instagram', 'messenger', 'website') NOT NULL DEFAULT 'pos',
     created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at                 TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

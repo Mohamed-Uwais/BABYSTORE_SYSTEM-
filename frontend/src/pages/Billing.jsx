@@ -13,7 +13,7 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash', icon: 'banknote' },
   { value: 'card', label: 'Card', icon: 'credit-card' },
   { value: 'bank_transfer', label: 'Bank Transfer', icon: 'landmark' },
-  { value: 'store_credit', label: 'Store Credit', icon: 'gift' },
+  { value: 'store_credit', label: 'Credit (Pay Later)', icon: 'gift' },
 ];
 
 function money(n) {
@@ -325,11 +325,11 @@ export default function Billing() {
 
       const refundAmt = returnRes.data.data.refund_total;
       if (netTotal < 0) {
-        toast.success(`Return processed! Refund: Rs. ${Math.abs(netTotal).toFixed(2)} via ${returnRefundMethod === 'store_credit' ? 'store credit' : 'cash'}`);
+        toast.success(`Return processed! Refund: Rs. ${Math.abs(netTotal).toFixed(2)} via ${returnRefundMethod === 'store_credit' ? 'credit reduction' : 'cash'}`);
       } else if (newLines.length > 0) {
         toast.success('Exchange complete!');
       } else {
-        toast.success(`Return processed! Refund: Rs. ${refundAmt.toFixed(2)} via ${returnRefundMethod === 'store_credit' ? 'store credit' : 'cash'}`);
+        toast.success(`Return processed! Refund: Rs. ${refundAmt.toFixed(2)} via ${returnRefundMethod === 'store_credit' ? 'credit reduction' : 'cash'}`);
       }
 
       setReturnResult(returnRes.data.data);
@@ -451,7 +451,7 @@ export default function Billing() {
         setCustomer(res.data.data);
         setCustomerSearchState('idle');
         if (res.data.data.credit_balance > 0) {
-          toast.info(`Customer has Rs. ${Number(res.data.data.credit_balance).toFixed(2)} store credit available`);
+          toast.warning(`Customer has Rs. ${Number(res.data.data.credit_balance).toFixed(2)} outstanding credit`);
         }
       } else {
         setCustomer(null);
@@ -772,27 +772,12 @@ export default function Billing() {
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                         {customer.customer_type === 'loyalty' ? 'Loyalty member' : 'Walk-in (registered)'} ·{' '}
-                        {customer.loyalty_points_balance} pts · Credit <span className="font-mono">{money(customer.credit_balance)}</span>
+                        {customer.loyalty_points_balance} pts
+                        {customer.credit_balance > 0 && <> · <span className="font-medium text-red-600 dark:text-red-400">Owes <span className="font-mono">{money(customer.credit_balance)}</span></span></>}
                       </p>
                     </div>
                     <button onClick={clearCustomer} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">Clear</button>
                   </div>
-                  {customer.credit_balance > 0 && cart.length > 0 && !payments.some(p => p.method === 'store_credit') && (
-                    <button
-                      onClick={() => {
-                        const creditAmt = Math.min(customer.credit_balance, grandTotal);
-                        const cashAmt = Math.max(0, grandTotal - creditAmt);
-                        setSplitMode(cashAmt > 0);
-                        const newPayments = [{ method: 'store_credit', amount: creditAmt.toFixed(2) }];
-                        if (cashAmt > 0) newPayments.push({ method: 'cash', amount: cashAmt.toFixed(2) });
-                        setPayments(newPayments);
-                        toast.success(`Applied Rs. ${creditAmt.toFixed(2)} store credit`);
-                      }}
-                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-emerald-400 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98] dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
-                    >
-                      💳 Apply Store Credit ({money(customer.credit_balance)})
-                    </button>
-                  )}
                 </motion.div>
               ) : (
                 <div>
@@ -998,7 +983,7 @@ export default function Billing() {
                 {payments.length === 0 && <p className="mt-2 text-sm text-slate-400">Tap a payment method to continue.</p>}
                 {storeCreditBlocked && (
                   <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-                    Only loyalty customers can pay with store credit.
+                    Only loyalty customers can buy on credit.
                   </p>
                 )}
               </section>
@@ -1168,7 +1153,7 @@ export default function Billing() {
             )}
             {returnMode && returnTotal > 0 && (
               <div className="mb-1 flex justify-between text-sm text-red-500">
-                <span>Return credit</span>
+                <span>Return value</span>
                 <span className="font-mono">−{money(returnTotal)}</span>
               </div>
             )}
@@ -1240,7 +1225,7 @@ export default function Billing() {
                       </button>
                       <button onClick={() => setReturnRefundMethod('store_credit')}
                         className={`flex-1 rounded-lg border-2 px-3 py-2 text-xs font-medium transition ${returnRefundMethod === 'store_credit' ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-900/20 dark:text-brand-300' : 'border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400'}`}>
-                        Store Credit
+                        Reduce Credit
                       </button>
                     </div>
                   </div>

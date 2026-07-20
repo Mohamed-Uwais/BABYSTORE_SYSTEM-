@@ -381,7 +381,7 @@ function CreditReport() {
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Total Outstanding" value={money(total_outstanding)} color="red" />
-        <StatCard label="Customers with Credit" value={customers.length} color="amber" />
+        <StatCard label="Customers Who Owe" value={customers.length} color="amber" />
       </div>
       {customers.length === 0 ? (
         <motion.div variants={fadeUp} className="rounded-xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">

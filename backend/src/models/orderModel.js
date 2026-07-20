@@ -48,19 +48,22 @@ async function createOrder(payload) {
       throw new Error('Order must contain at least one item');
     }
 
-    // --- 1. Validate customer_type for credit payments ---
+    // --- 1. Validate customer_type for credit (buy now, pay later) payments ---
     const usesCredit = payments.some(p => p.payment_method === 'store_credit');
     if (usesCredit) {
       if (!customer_id) throw new Error('Credit payment requires a registered customer');
       const [[customer]] = await connection.query(
-        'SELECT customer_type, credit_balance FROM customers WHERE id = ? FOR UPDATE', [customer_id]
+        'SELECT customer_type, credit_balance, credit_limit FROM customers WHERE id = ? FOR UPDATE', [customer_id]
       );
       if (!customer || customer.customer_type !== 'loyalty') {
-        throw new Error('Only loyalty customers can use store credit / pay on credit');
+        throw new Error('Only loyalty customers can buy on credit');
       }
       const creditAmt = payments.filter(p => p.payment_method === 'store_credit').reduce((s, p) => s + parseFloat(p.amount), 0);
-      if (creditAmt > customer.credit_balance + 0.5) {
-        throw new Error(`Insufficient store credit: available Rs. ${customer.credit_balance.toFixed(2)}, requested Rs. ${creditAmt.toFixed(2)}`);
+      if (customer.credit_limit && customer.credit_limit > 0) {
+        const newBalance = Number(customer.credit_balance) + creditAmt;
+        if (newBalance > Number(customer.credit_limit) + 0.5) {
+          throw new Error(`Credit limit exceeded: limit Rs. ${Number(customer.credit_limit).toFixed(2)}, would owe Rs. ${newBalance.toFixed(2)}`);
+        }
       }
     }
 
@@ -149,9 +152,9 @@ async function createOrder(payload) {
       const creditPayment = payments.find(p => p.payment_method === 'store_credit');
       if (creditPayment) {
         await customerModel.addLedgerEntry(connection, {
-          customer_id, entry_type: 'credit_repaid', credit_delta: -parseFloat(creditPayment.amount),
+          customer_id, entry_type: 'credit_issued', credit_delta: parseFloat(creditPayment.amount),
           reference_type: 'order', reference_id: orderId,
-          notes: `Store credit used for order ${order_number}`, created_by: cashier_id
+          notes: `Bought on credit — order ${order_number}`, created_by: cashier_id
         });
       }
     }
@@ -401,11 +404,11 @@ async function processReturnExchange(data, processedBy) {
     if (refund_method === 'store_credit' && effectiveCustomerId) {
       await customerModel.addLedgerEntry(connection, {
         customer_id: effectiveCustomerId,
-        entry_type: 'credit_issued',
-        credit_delta: totalRefundAmount,
+        entry_type: 'credit_repaid',
+        credit_delta: -totalRefundAmount,
         reference_type: 'order',
         reference_id: original_order_id,
-        notes: `Store credit from return on order #${original_order_id}`,
+        notes: `Credit reduced from return on order #${original_order_id}`,
         created_by: processedBy,
       });
     }
