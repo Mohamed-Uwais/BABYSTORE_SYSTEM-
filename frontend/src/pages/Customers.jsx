@@ -364,24 +364,25 @@ export default function Customers() {
 
       {/* Credit Repayment Modal */}
       <Modal open={repayOpen && !!detail} onClose={() => setRepayOpen(false)} title="Record Credit Payment" maxW="max-w-md">
+        {detail && (<>
         <div className="mb-4 rounded-xl bg-red-50 p-3 dark:bg-red-900/20">
           <p className="text-xs text-slate-500 dark:text-slate-400">Outstanding balance</p>
-          <p className="text-lg font-bold font-mono text-red-600 dark:text-red-400">{money(Math.abs(detail?.credit_balance || 0))}</p>
+          <p className="text-lg font-bold font-mono text-red-600 dark:text-red-400">{money(Math.abs(detail.credit_balance || 0))}</p>
         </div>
         <form onSubmit={submitRepayment} className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (Rs.)</label>
             <input value={repayAmount} onChange={e => setRepayAmount(e.target.value)} type="number" step="0.01" min="0.01"
-              max={Math.abs(detail?.credit_balance || 0) || undefined}
+              max={Math.abs(detail.credit_balance || 0) || undefined}
               className={`${inputClass} font-mono`} placeholder="0.00" required autoFocus />
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {Number(detail?.credit_balance) !== 0 && (
+              {Number(detail.credit_balance) !== 0 && (
                 <button type="button" onClick={() => setRepayAmount(Math.abs(Number(detail.credit_balance)).toFixed(2))}
                   className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
                   Pay Full ({money(Math.abs(detail.credit_balance))})
                 </button>
               )}
-              {[5000, 10000].filter(v => v < Math.abs(Number(detail?.credit_balance || 0))).map(v => (
+              {[5000, 10000].filter(v => v < Math.abs(Number(detail.credit_balance || 0))).map(v => (
                 <button key={v} type="button" onClick={() => setRepayAmount(v.toFixed(2))}
                   className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">
                   Rs. {v.toLocaleString()}
@@ -409,6 +410,7 @@ export default function Customers() {
             </button>
           </div>
         </form>
+        </>)}
       </Modal>
     </PageWrapper>
   );
