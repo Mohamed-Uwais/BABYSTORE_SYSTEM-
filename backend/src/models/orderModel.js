@@ -248,7 +248,7 @@ async function getBestSellers(limit = 12) {
     JOIN products p ON p.id = pv.product_id
     JOIN orders o ON o.id = oi.order_id
     WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-      AND o.status = 'completed'
+      AND o.status IN ('completed', 'delivered')
     GROUP BY pv.id
     ORDER BY units_sold DESC
     LIMIT ?

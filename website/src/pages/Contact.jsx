@@ -4,8 +4,10 @@ import { MapPin, Phone, Mail, MessageCircle, Send, CheckCircle2, Loader2 } from 
 import api from '../api/client';
 import PageHero from '../components/PageHero';
 import SEO from '../components/SEO';
+import { useContent } from '../context/ContentContext';
 
 export default function Contact() {
+  const { footer } = useContent();
   const [form, setForm] = useState({ name: '', phone: '', email: '', message: '' });
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
@@ -48,9 +50,9 @@ export default function Contact() {
 
             <div className="mt-8 space-y-6">
               {[
-                { icon: MapPin, title: 'Visit Us', lines: ['Colombo, Sri Lanka'] },
-                { icon: Phone, title: 'Call Us', lines: ['+94 77 123 4567'] },
-                { icon: Mail, title: 'Email Us', lines: ['hello@littoradiapers.com'] },
+                { icon: MapPin, title: 'Visit Us', lines: [footer.address] },
+                { icon: Phone, title: 'Call Us', lines: [footer.phone] },
+                { icon: Mail, title: 'Email Us', lines: [footer.email] },
               ].map((item, i) => (
                 <div key={i} className="flex gap-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-500">
@@ -65,7 +67,7 @@ export default function Contact() {
             </div>
 
             <a
-              href="https://wa.me/94771234567?text=Hi!%20I%20have%20a%20question"
+              href={`https://wa.me/${footer.whatsapp || '94771234567'}?text=Hi!%20I%20have%20a%20question`}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-8 flex items-center gap-2 rounded-2xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-emerald-600"

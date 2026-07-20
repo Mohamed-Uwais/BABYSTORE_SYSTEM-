@@ -51,6 +51,7 @@ export default function Customers() {
   const [repayOpen, setRepayOpen] = useState(false);
   const [repayAmount, setRepayAmount] = useState('');
   const [repayNote, setRepayNote] = useState('');
+  const [repayMethod, setRepayMethod] = useState('cash');
   const [repaySaving, setRepaySaving] = useState(false);
 
   const fetchCustomers = useCallback(async () => {
@@ -126,9 +127,14 @@ export default function Customers() {
     } catch (err) { toast.error(err.response?.data?.message || 'Failed to convert'); }
   }
 
-  function openRepayment() {
+  function openRepayment(customerOverride) {
+    const target = customerOverride || detail;
+    if (customerOverride && customerOverride.id !== detail?.id) {
+      loadDetail(customerOverride.id);
+    }
     setRepayAmount('');
     setRepayNote('');
+    setRepayMethod('cash');
     setRepayOpen(true);
   }
 
@@ -137,10 +143,13 @@ export default function Customers() {
     const amt = parseFloat(repayAmount);
     if (!amt || amt <= 0) return;
     setRepaySaving(true);
+    const methodLabel = { cash: 'Cash', card: 'Card', bank_transfer: 'Bank Transfer' }[repayMethod] || repayMethod;
+    const note = [methodLabel, repayNote].filter(Boolean).join(' — ');
     try {
-      await client.post(`/customers/${detail.id}/repayment`, { amount: amt, notes: repayNote || undefined });
+      await client.post(`/customers/${detail.id}/repayment`, { amount: amt, notes: note });
       setRepayOpen(false);
-      toast.success('Repayment recorded');
+      const remaining = Math.max(0, Math.abs(Number(detail.credit_balance)) - amt);
+      toast.success(`Payment of ${money(amt)} recorded. Remaining balance: ${money(remaining)}`);
       await fetchCustomers();
       await loadDetail(detail.id);
     } catch (err) { toast.error(err.response?.data?.message || 'Failed to record repayment'); }
@@ -239,8 +248,8 @@ export default function Customers() {
                   {detail.customer_type === 'walk_in' && (
                     <button onClick={handleConvertLoyalty} className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100 active:scale-[0.97] dark:border-brand-900/40 dark:bg-brand-900/10 dark:text-brand-400">Convert to Loyalty</button>
                   )}
-                  {detail.credit_balance > 0 && (
-                    <button onClick={openRepayment} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.97] dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-400">Record Repayment</button>
+                  {Number(detail.credit_balance) !== 0 && (
+                    <button onClick={() => openRepayment()} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.97] dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-400">Record Payment</button>
                   )}
                 </div>
               </div>
@@ -250,7 +259,7 @@ export default function Customers() {
                   { label: 'Total Orders', value: detail.total_orders },
                   { label: 'Total Spent', value: money(detail.total_spent), mono: true },
                   { label: 'Loyalty Points', value: detail.loyalty_points_balance },
-                  { label: 'Outstanding Credit', value: money(detail.credit_balance), mono: true },
+                  { label: 'Outstanding Credit', value: Number(detail.credit_balance) !== 0 ? money(Math.abs(detail.credit_balance)) : 'None', mono: Number(detail.credit_balance) !== 0 },
                 ].map(s => (
                   <div key={s.label} className="rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/50">
                     <p className={`text-lg font-bold text-slate-900 dark:text-white ${s.mono ? 'font-mono' : ''}`}>{s.value}</p>
@@ -311,7 +320,7 @@ export default function Customers() {
                           </div>
                           <div className="shrink-0 text-right">
                             {l.points_delta !== 0 && <p className={`font-mono text-sm font-semibold ${l.points_delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{l.points_delta > 0 ? '+' : ''}{l.points_delta} pts</p>}
-                            {l.credit_delta !== 0 && <p className={`font-mono text-sm font-semibold ${l.credit_delta > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{l.credit_delta > 0 ? '+' : ''}{money(l.credit_delta)}</p>}
+                            {l.credit_delta !== 0 && <p className={`font-mono text-sm font-semibold ${l.credit_delta > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{l.credit_delta > 0 ? '+' : '−'}{money(Math.abs(l.credit_delta))}</p>}
                           </div>
                         </div>
                       ))}
@@ -354,14 +363,45 @@ export default function Customers() {
       </Modal>
 
       {/* Credit Repayment Modal */}
-      <Modal open={repayOpen} onClose={() => setRepayOpen(false)} title="Record Credit Repayment" maxW="max-w-sm">
-        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">Outstanding: <span className="font-mono text-red-600 dark:text-red-400">{money(detail?.credit_balance)}</span></p>
-        <form onSubmit={submitRepayment} className="space-y-3">
-          <div><label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (Rs.)</label>
+      <Modal open={repayOpen} onClose={() => setRepayOpen(false)} title="Record Credit Payment" maxW="max-w-md">
+        <div className="mb-4 rounded-xl bg-red-50 p-3 dark:bg-red-900/20">
+          <p className="text-xs text-slate-500 dark:text-slate-400">Outstanding balance</p>
+          <p className="text-lg font-bold font-mono text-red-600 dark:text-red-400">{money(Math.abs(detail?.credit_balance || 0))}</p>
+        </div>
+        <form onSubmit={submitRepayment} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (Rs.)</label>
             <input value={repayAmount} onChange={e => setRepayAmount(e.target.value)} type="number" step="0.01" min="0.01"
-              className={`${inputClass} font-mono`} placeholder="0.00" required autoFocus /></div>
-          <div><label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Note (optional)</label>
-            <input value={repayNote} onChange={e => setRepayNote(e.target.value)} className={inputClass} placeholder="e.g. Cash payment" /></div>
+              max={Math.abs(detail?.credit_balance || 0) || undefined}
+              className={`${inputClass} font-mono`} placeholder="0.00" required autoFocus />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Number(detail?.credit_balance) !== 0 && (
+                <button type="button" onClick={() => setRepayAmount(Math.abs(Number(detail.credit_balance)).toFixed(2))}
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">
+                  Pay Full ({money(Math.abs(detail.credit_balance))})
+                </button>
+              )}
+              {[5000, 10000].filter(v => v < Math.abs(Number(detail?.credit_balance || 0))).map(v => (
+                <button key={v} type="button" onClick={() => setRepayAmount(v.toFixed(2))}
+                  className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">
+                  Rs. {v.toLocaleString()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Payment Method</label>
+            <div className="flex gap-2">
+              {[{ v: 'cash', l: 'Cash' }, { v: 'card', l: 'Card' }, { v: 'bank_transfer', l: 'Bank Transfer' }].map(m => (
+                <button key={m.v} type="button" onClick={() => setRepayMethod(m.v)}
+                  className={`flex-1 rounded-lg border-2 px-3 py-2 text-xs font-medium transition ${repayMethod === m.v ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-900/20 dark:text-brand-300' : 'border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400'}`}>
+                  {m.l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div><label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Reference note (optional)</label>
+            <input value={repayNote} onChange={e => setRepayNote(e.target.value)} className={inputClass} placeholder="e.g. Paid cash at shop" /></div>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setRepayOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Cancel</button>
             <button type="submit" disabled={repaySaving} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 active:scale-[0.97] disabled:opacity-50">

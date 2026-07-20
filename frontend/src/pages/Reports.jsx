@@ -361,6 +361,11 @@ function CreditReport() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
+  const [repayCustomer, setRepayCustomer] = useState(null);
+  const [repayAmount, setRepayAmount] = useState('');
+  const [repayMethod, setRepayMethod] = useState('cash');
+  const [repayNote, setRepayNote] = useState('');
+  const [repaySaving, setRepaySaving] = useState(false);
 
   useEffect(() => { load(); }, []);
   async function load() {
@@ -370,6 +375,29 @@ function CreditReport() {
       setData(res.data.data);
     } catch { addToast('Failed to load credit report', 'error'); }
     finally { setLoading(false); }
+  }
+
+  function openRepay(c) {
+    setRepayCustomer(c);
+    setRepayAmount('');
+    setRepayMethod('cash');
+    setRepayNote('');
+  }
+
+  async function submitRepay(e) {
+    e.preventDefault();
+    const amt = parseFloat(repayAmount);
+    if (!amt || amt <= 0 || !repayCustomer) return;
+    setRepaySaving(true);
+    const methodLabel = { cash: 'Cash', card: 'Card', bank_transfer: 'Bank Transfer' }[repayMethod] || repayMethod;
+    try {
+      await client.post(`/customers/${repayCustomer.id}/repayment`, { amount: amt, notes: [methodLabel, repayNote].filter(Boolean).join(' — ') });
+      const remaining = Math.max(0, Number(repayCustomer.credit_balance) - amt);
+      addToast(`Payment of ${money(amt)} recorded. Remaining: ${money(remaining)}`, 'success');
+      setRepayCustomer(null);
+      load();
+    } catch (err) { addToast(err.response?.data?.message || 'Failed', 'error'); }
+    finally { setRepaySaving(false); }
   }
 
   if (loading) return <ReportSkeleton />;
@@ -392,7 +420,7 @@ function CreditReport() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                <th className="px-4 py-2">Customer</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2">Tier</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2">Last Credit</th><th className="px-4 py-2">Last Repaid</th>
+                <th className="px-4 py-2">Customer</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2">Tier</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2">Last Credit</th><th className="px-4 py-2">Last Repaid</th><th className="px-4 py-2"></th>
               </tr></thead>
               <tbody>
                 {customers.map(c => (
@@ -400,14 +428,55 @@ function CreditReport() {
                     <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">{c.full_name}</td>
                     <td className="px-4 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{c.phone}</td>
                     <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.loyalty_tier}</td>
-                    <td className="px-4 py-2 text-right font-mono font-semibold text-red-600 dark:text-red-400">{money(c.credit_balance)}</td>
+                    <td className="px-4 py-2 text-right font-mono font-semibold text-red-600 dark:text-red-400">{money(Math.abs(c.credit_balance))}</td>
                     <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.last_credit_date ? new Date(c.last_credit_date).toLocaleDateString() : '—'}</td>
                     <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.last_repayment_date ? new Date(c.last_repayment_date).toLocaleDateString() : '—'}</td>
+                    <td className="px-4 py-2">
+                      <button onClick={() => openRepay(c)} className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">Record Payment</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </motion.div>
+      )}
+
+      {repayCustomer && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl border-2 border-emerald-300 bg-white p-4 shadow-lg dark:border-emerald-700 dark:bg-slate-900">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Record Payment — {repayCustomer.full_name}</h3>
+            <button onClick={() => setRepayCustomer(null)} className="text-xs text-slate-400 hover:text-slate-600">Cancel</button>
+          </div>
+          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">Outstanding: <span className="font-mono font-semibold text-red-600 dark:text-red-400">{money(Math.abs(repayCustomer.credit_balance))}</span></p>
+          <form onSubmit={submitRepay} className="space-y-3">
+            <div>
+              <input value={repayAmount} onChange={e => setRepayAmount(e.target.value)} type="number" step="0.01" min="0.01"
+                max={Math.abs(repayCustomer.credit_balance)} placeholder="Amount (Rs.)" autoFocus
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => setRepayAmount(Math.abs(Number(repayCustomer.credit_balance)).toFixed(2))}
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400">Pay Full</button>
+                {[5000, 10000].filter(v => v < Math.abs(Number(repayCustomer.credit_balance))).map(v => (
+                  <button key={v} type="button" onClick={() => setRepayAmount(v.toFixed(2))}
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400">Rs. {v.toLocaleString()}</button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {[{ v: 'cash', l: 'Cash' }, { v: 'card', l: 'Card' }, { v: 'bank_transfer', l: 'Bank Transfer' }].map(m => (
+                <button key={m.v} type="button" onClick={() => setRepayMethod(m.v)}
+                  className={`flex-1 rounded-lg border-2 px-2 py-1.5 text-xs font-medium transition ${repayMethod === m.v ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-900/20 dark:text-brand-300' : 'border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400'}`}>{m.l}</button>
+              ))}
+            </div>
+            <input value={repayNote} onChange={e => setRepayNote(e.target.value)} placeholder="Reference note (optional)"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <button type="submit" disabled={repaySaving || !repayAmount}
+              className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+              {repaySaving ? 'Recording...' : 'Record Payment'}
+            </button>
+          </form>
         </motion.div>
       )}
     </motion.div>

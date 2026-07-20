@@ -450,8 +450,8 @@ export default function Billing() {
       if (res.data.data) {
         setCustomer(res.data.data);
         setCustomerSearchState('idle');
-        if (res.data.data.credit_balance > 0) {
-          toast.warning(`Customer has Rs. ${Number(res.data.data.credit_balance).toFixed(2)} outstanding credit`);
+        if (Number(res.data.data.credit_balance) !== 0) {
+          toast.warning(`Customer has Rs. ${Math.abs(Number(res.data.data.credit_balance)).toFixed(2)} outstanding credit`);
         }
       } else {
         setCustomer(null);
@@ -773,11 +773,16 @@ export default function Billing() {
                       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                         {customer.customer_type === 'loyalty' ? 'Loyalty member' : 'Walk-in (registered)'} ·{' '}
                         {customer.loyalty_points_balance} pts
-                        {customer.credit_balance > 0 && <> · <span className="font-medium text-red-600 dark:text-red-400">Owes <span className="font-mono">{money(customer.credit_balance)}</span></span></>}
+                        {Number(customer.credit_balance) !== 0 && <> · <span className="font-medium text-red-600 dark:text-red-400">Owes <span className="font-mono">{money(Math.abs(customer.credit_balance))}</span></span></>}
                       </p>
                     </div>
                     <button onClick={clearCustomer} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">Clear</button>
                   </div>
+                  {Number(customer.credit_balance) !== 0 && (
+                    <div className="mt-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-900/20">
+                      <span className="text-xs font-medium text-red-700 dark:text-red-400">⚠️ This customer owes {money(Math.abs(customer.credit_balance))}</span>
+                    </div>
+                  )}
                 </motion.div>
               ) : (
                 <div>
@@ -986,6 +991,15 @@ export default function Billing() {
                     Only loyalty customers can buy on credit.
                   </p>
                 )}
+                {hasStoreCreditPayment && !storeCreditBlocked && Number(customer?.credit_balance) !== 0 && (() => {
+                  const creditAmt = payments.filter(p => p.method === 'store_credit').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                  const newBalance = Math.abs(Number(customer.credit_balance)) + creditAmt;
+                  return (
+                    <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+                      Adding {money(creditAmt)} to existing credit of {money(Math.abs(customer.credit_balance))}. New balance will be {money(newBalance)}.
+                    </div>
+                  );
+                })()}
               </section>
             )}
 

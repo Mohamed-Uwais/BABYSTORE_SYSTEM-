@@ -58,7 +58,7 @@ async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSal
                 JOIN orders o ON o.id = oi.order_id
                 WHERE oi.variant_id = MIN(pv.id)
                 AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                AND o.status = 'completed'), 0) AS units_sold,
+                AND o.status IN ('completed', 'delivered')), 0) AS units_sold,
       (SELECT COUNT(*) > 0 FROM variant_price_tiers vpt WHERE vpt.variant_id = MIN(pv.id)) AS has_tiers
     FROM products p
     JOIN product_variants pv ON pv.product_id = p.id
@@ -193,7 +193,7 @@ async function getBestSellers(limit = 8) {
     JOIN product_variants pv ON pv.id = oi.variant_id AND pv.is_active = TRUE
     JOIN products p ON p.id = pv.product_id AND p.is_active = TRUE
     LEFT JOIN brands b ON p.brand_id = b.id
-    WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND o.status = 'completed'
+    WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND o.status IN ('completed', 'delivered')
     GROUP BY pv.id
     ORDER BY units_sold DESC
     LIMIT ?

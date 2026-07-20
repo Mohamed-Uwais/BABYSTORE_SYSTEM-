@@ -34,12 +34,12 @@ async function creditReport() {
            (SELECT MAX(cl.created_at) FROM customer_ledger cl WHERE cl.customer_id = c.id AND cl.entry_type = 'credit_issued') AS last_credit_date,
            (SELECT MAX(cl.created_at) FROM customer_ledger cl WHERE cl.customer_id = c.id AND cl.entry_type = 'credit_repaid') AS last_repayment_date
     FROM customers c
-    WHERE c.credit_balance > 0
-    ORDER BY c.credit_balance DESC
+    WHERE c.credit_balance != 0
+    ORDER BY ABS(c.credit_balance) DESC
   `);
 
   const [[{ total_outstanding }]] = await db.query(
-    'SELECT COALESCE(SUM(credit_balance), 0) AS total_outstanding FROM customers WHERE credit_balance > 0'
+    'SELECT COALESCE(SUM(ABS(credit_balance)), 0) AS total_outstanding FROM customers WHERE credit_balance != 0'
   );
 
   return { customers, total_outstanding };
@@ -182,7 +182,7 @@ async function profitReport({ from, to }) {
     JOIN order_items oi ON oi.order_id = o.id
     JOIN product_variants pv ON pv.id = oi.variant_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status IN ('completed', 'partially_refunded')
+      AND o.status IN ('completed', 'delivered', 'partially_refunded')
     GROUP BY o.id
     ORDER BY o.created_at DESC
   `, [from, to]);
@@ -194,7 +194,7 @@ async function profitReport({ from, to }) {
     JOIN order_items oi ON oi.order_id = o.id
     JOIN product_variants pv ON pv.id = oi.variant_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status IN ('completed', 'partially_refunded')
+      AND o.status IN ('completed', 'delivered', 'partially_refunded')
   `, [from, to]);
 
   const grossProfit = summary.total_revenue - summary.total_cogs;
@@ -208,7 +208,7 @@ async function profitReport({ from, to }) {
     JOIN order_items oi ON oi.order_id = o.id
     JOIN product_variants pv ON pv.id = oi.variant_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status IN ('completed', 'partially_refunded')
+      AND o.status IN ('completed', 'delivered', 'partially_refunded')
     GROUP BY DATE(o.created_at) ORDER BY date
   `, [from, to]);
 
@@ -223,7 +223,7 @@ async function profitReport({ from, to }) {
     JOIN product_variants pv ON pv.id = oi.variant_id
     JOIN products p ON p.id = pv.product_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status IN ('completed', 'partially_refunded')
+      AND o.status IN ('completed', 'delivered', 'partially_refunded')
     GROUP BY pv.id
     ORDER BY profit DESC
   `, [from, to]);
