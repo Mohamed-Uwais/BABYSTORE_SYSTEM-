@@ -15,9 +15,9 @@ function formatPrice(amount) {
 
 export default function ProductCard({ product, index = 0 }) {
   const {
-    id, name, slug, brand_name, retail_price, image_url,
+    id, name, slug, brand_name, retail_price, mrp, image_url,
     in_stock, on_sale, discounted_price, min_discounted_price, variant_count, has_tiers,
-    second_image_url,
+    second_image_url, discount_type, discount_value,
   } = product;
 
   const { addItem } = useCart();
@@ -30,6 +30,17 @@ export default function ProductCard({ product, index = 0 }) {
 
   const finalPrice = min_discounted_price || discounted_price || retail_price;
   const hasDiscount = on_sale && Number(finalPrice) < Number(retail_price);
+  const hasMrpDiscount = mrp && Number(mrp) > Number(retail_price);
+  const mrpPercent = hasMrpDiscount ? Math.round((Number(mrp) - Number(retail_price)) / Number(mrp) * 100) : 0;
+
+  const discountBadgeText = discount_type === 'percent' && Number(discount_value) > 0
+    ? `-${Number(discount_value)}%`
+    : discount_type === 'amount' && Number(discount_value) > 0
+      ? `Rs. ${Number(discount_value).toLocaleString()} OFF`
+      : hasMrpDiscount && mrpPercent > 0
+        ? `-${mrpPercent}%`
+        : null;
+  const showStrikePrice = hasMrpDiscount ? Number(mrp) : (hasDiscount ? Number(retail_price) : null);
 
   const ref = useRef(null);
   const x = useMotionValue(0);
@@ -101,15 +112,17 @@ export default function ProductCard({ product, index = 0 }) {
               </div>
             )}
 
-            {/* Sale ribbon */}
-            {hasDiscount && in_stock && (
-              <div className="absolute -right-8 top-4 rotate-45 bg-accent-500 px-10 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
-                Sale
+            {/* Discount badge */}
+            {discountBadgeText && in_stock && (
+              <div className="absolute left-2 top-2 z-10">
+                <span className="inline-block rounded-lg bg-red-500 px-2 py-1 text-[10px] font-bold text-white shadow-sm">
+                  {discountBadgeText}
+                </span>
               </div>
             )}
 
-            {/* Promo badge */}
-            {promoBadge && in_stock && !hasDiscount && (
+            {/* Promo badge (only if no discount badge) */}
+            {promoBadge && in_stock && !discountBadgeText && (
               <div className="absolute left-2 top-2 z-10">
                 <span className="inline-block rounded-lg bg-primary-500 px-2 py-1 text-[10px] font-bold text-white shadow-sm">
                   {promoBadge.promo_type === 'percentage_discount' ? `${promoBadge.discount_value}% OFF` :
@@ -155,12 +168,14 @@ export default function ProductCard({ product, index = 0 }) {
             {variant_count > 1 && (
               <p className="mt-0.5 text-[11px] text-slate-400">{variant_count} sizes available</p>
             )}
-            <div className="mt-2 flex items-baseline gap-2">
-              {has_tiers && <span className="text-xs font-medium text-slate-500">From</span>}
-              <span className="font-mono text-base font-bold text-slate-900">{formatPrice(finalPrice)}</span>
-              {hasDiscount && (
-                <span className="font-mono text-xs text-slate-400 line-through">{formatPrice(retail_price)}</span>
+            <div className="mt-2">
+              {showStrikePrice && (
+                <p className="font-mono text-xs text-slate-400 line-through">{formatPrice(showStrikePrice)}</p>
               )}
+              <div className="flex items-baseline gap-2">
+                {has_tiers && <span className="text-xs font-medium text-slate-500">From</span>}
+                <span className="font-mono text-base font-bold text-teal-600">{formatPrice(finalPrice)}</span>
+              </div>
             </div>
           </div>
         </Link>

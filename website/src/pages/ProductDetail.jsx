@@ -68,6 +68,8 @@ export default function ProductDetail() {
   const basePrice = hasDiscount ? Number(v.discounted_price) : Number(v?.retail_price);
   const finalPrice = selectedTier ? Number(selectedTier.tier_price) : basePrice;
   const discountPercent = hasDiscount && v.discount_type === 'percent' ? Number(v.discount_value) : null;
+  const hasMrpDiscount = v && v.mrp && Number(v.mrp) > Number(v.retail_price);
+  const mrpPercent = hasMrpDiscount ? Math.round((Number(v.mrp) - Number(v.retail_price)) / Number(v.mrp) * 100) : 0;
 
   // Build tier options including base (1 pack) option
   const tierOptions = v && hasTiers ? [
@@ -132,8 +134,8 @@ export default function ProductDetail() {
               images={product.images}
               variantImageUrl={v?.image_url}
               productName={product.name}
-              hasDiscount={hasDiscount}
-              discountLabel={discountPercent ? `-${discountPercent}%` : 'SALE'}
+              hasDiscount={hasDiscount || hasMrpDiscount}
+              discountLabel={discountPercent ? `-${discountPercent}%` : hasMrpDiscount && mrpPercent > 0 ? `-${mrpPercent}%` : hasDiscount && v.discount_type === 'amount' ? `Rs. ${Number(v.discount_value).toLocaleString()} OFF` : 'SALE'}
             />
           </motion.div>
 
@@ -154,16 +156,27 @@ export default function ProductDetail() {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{product.name}</h1>
 
             {/* Price */}
-            <div className="mt-4 flex items-baseline gap-3">
-              <span className="font-mono text-3xl font-bold text-slate-900">{formatPrice(finalPrice)}</span>
-              {(hasDiscount || selectedTier) && (
-                <span className="font-mono text-lg text-slate-400 line-through">{formatPrice(selectedTier ? basePrice * selectedTier.min_quantity : v.retail_price)}</span>
+            <div className="mt-4">
+              {(hasMrpDiscount || hasDiscount || selectedTier) && (
+                <p className="font-mono text-base text-slate-400 line-through">
+                  {formatPrice(selectedTier ? basePrice * selectedTier.min_quantity : (hasMrpDiscount ? v.mrp : v.retail_price))}
+                </p>
               )}
-              {selectedTier && (
-                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                  {selectedTier.min_quantity} pack{selectedTier.min_quantity > 1 ? 's' : ''}
-                </span>
-              )}
+              <div className="flex items-baseline gap-3">
+                <span className="font-mono text-3xl font-bold text-teal-600">{formatPrice(finalPrice)}</span>
+                {discountPercent ? (
+                  <span className="rounded-lg bg-red-500 px-2.5 py-1 text-xs font-bold text-white">-{discountPercent}%</span>
+                ) : hasDiscount && v.discount_type === 'amount' ? (
+                  <span className="rounded-lg bg-red-500 px-2.5 py-1 text-xs font-bold text-white">Rs. {Number(v.discount_value).toLocaleString()} OFF</span>
+                ) : hasMrpDiscount && mrpPercent > 0 ? (
+                  <span className="rounded-lg bg-red-500 px-2.5 py-1 text-xs font-bold text-white">-{mrpPercent}%</span>
+                ) : null}
+                {selectedTier && (
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                    {selectedTier.min_quantity} pack{selectedTier.min_quantity > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Stock status */}

@@ -40,10 +40,13 @@ async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSal
       MIN(pv.id) AS variant_id,
       MIN(pv.variant_label) AS variant_label,
       MIN(pv.retail_price) AS retail_price,
+      MIN(pv.mrp) AS mrp,
       MIN(pv.image_url) AS image_url,
       MAX(CASE WHEN pv.current_stock > 0 THEN 1 ELSE 0 END) AS in_stock,
       COUNT(pv.id) AS variant_count,
       MAX(CASE WHEN pv.discount_type != 'none' AND pv.discount_value > 0 THEN 1 ELSE 0 END) AS on_sale,
+      MIN(pv.discount_type) AS discount_type,
+      MIN(pv.discount_value) AS discount_value,
       MAX(CASE
         WHEN pv.discount_type = 'percent' THEN ROUND(pv.retail_price * (1 - pv.discount_value / 100), 2)
         WHEN pv.discount_type = 'amount' THEN GREATEST(pv.retail_price - pv.discount_value, 0)
@@ -97,7 +100,7 @@ async function getProductBySlug(slug) {
   if (!product) return null;
 
   const [variants] = await db.query(`
-    SELECT id, variant_label, retail_price, image_url, current_stock,
+    SELECT id, variant_label, retail_price, mrp, image_url, current_stock,
            discount_type, discount_value,
            CASE
              WHEN discount_type = 'percent' THEN ROUND(retail_price * (1 - discount_value / 100), 2)
@@ -179,7 +182,7 @@ async function getBrands() {
 async function getBestSellers(limit = 8) {
   const [rows] = await db.query(`
     SELECT p.id, p.name, p.slug, b.name AS brand_name,
-           pv.retail_price, pv.image_url,
+           pv.retail_price, pv.mrp, pv.image_url,
            pv.discount_type, pv.discount_value,
            CASE
              WHEN pv.discount_type = 'percent' THEN ROUND(pv.retail_price * (1 - pv.discount_value / 100), 2)
@@ -236,8 +239,9 @@ async function _attachSecondImage(products) {
 async function getNewArrivals(limit = 8) {
   const [rows] = await db.query(`
     SELECT p.id, p.name, p.slug, b.name AS brand_name,
-           MIN(pv.retail_price) AS retail_price, MIN(pv.image_url) AS image_url,
+           MIN(pv.retail_price) AS retail_price, MIN(pv.mrp) AS mrp, MIN(pv.image_url) AS image_url,
            MAX(CASE WHEN pv.current_stock > 0 THEN 1 ELSE 0 END) AS in_stock,
+           MIN(pv.discount_type) AS discount_type, MIN(pv.discount_value) AS discount_value,
            MIN(CASE
              WHEN pv.discount_type = 'percent' THEN ROUND(pv.retail_price * (1 - pv.discount_value / 100), 2)
              WHEN pv.discount_type = 'amount' THEN GREATEST(pv.retail_price - pv.discount_value, 0)

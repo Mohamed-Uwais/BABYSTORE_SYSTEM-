@@ -403,7 +403,11 @@ function VariantRow({ v, onEdit, onAdjust, onHistory, onDelete, onPriceUpdate, c
       <td className="py-2.5 text-right">{renderPrice('wholesale_price', v.wholesale_price)}</td>
       <td className="py-2.5 text-right">{renderPrice('retail_price', v.retail_price)}</td>
       <td className="py-2.5 text-right">
-        <span className={`font-mono ${low ? 'font-medium text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{v.current_stock}</span>
+        {v.current_stock > 0 ? (
+          <span className={`font-mono ${low ? 'font-medium text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{v.current_stock}</span>
+        ) : (
+          <span className="text-xs font-medium text-red-500 dark:text-red-400">Out of Stock</span>
+        )}
       </td>
       <td className="py-2.5 text-right">
         <div className="flex justify-end gap-1.5">
