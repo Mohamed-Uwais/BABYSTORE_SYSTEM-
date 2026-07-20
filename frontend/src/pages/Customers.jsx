@@ -363,7 +363,7 @@ export default function Customers() {
       </Modal>
 
       {/* Credit Repayment Modal */}
-      <Modal open={repayOpen} onClose={() => setRepayOpen(false)} title="Record Credit Payment" maxW="max-w-md">
+      <Modal open={repayOpen && !!detail} onClose={() => setRepayOpen(false)} title="Record Credit Payment" maxW="max-w-md">
         <div className="mb-4 rounded-xl bg-red-50 p-3 dark:bg-red-900/20">
           <p className="text-xs text-slate-500 dark:text-slate-400">Outstanding balance</p>
           <p className="text-lg font-bold font-mono text-red-600 dark:text-red-400">{money(Math.abs(detail?.credit_balance || 0))}</p>
