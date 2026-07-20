@@ -13,7 +13,7 @@ async function getAllProducts() {
   const [rows] = await db.query(`
     SELECT
       p.id, p.name, p.description, p.category_id, c.name AS category_name,
-      p.brand_id, b.name AS brand_name, p.is_active,
+      p.brand_id, b.name AS brand_name, p.is_active, p.show_on_website,
       pv.id AS variant_id, pv.sku, pv.barcode, pv.variant_label,
       pv.retail_price, pv.wholesale_price, pv.cost_price, pv.mrp,
       pv.current_stock, pv.image_url, pv.low_stock_threshold,

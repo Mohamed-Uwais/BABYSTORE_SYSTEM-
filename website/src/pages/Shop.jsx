@@ -14,12 +14,9 @@ const SORT_OPTIONS = [
   { value: 'best_selling', label: 'Best Selling' },
 ];
 
-const PER_PAGE = 12;
-
 export default function Shop() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
-  const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,14 +28,12 @@ export default function Shop() {
   const search = searchParams.get('search') || '';
   const inStock = searchParams.get('inStock') || '';
   const onSale = searchParams.get('onSale') || '';
-  const page = parseInt(searchParams.get('page') || '1', 10);
 
   const setFilter = useCallback((key, value) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       if (value) next.set(key, value);
       else next.delete(key);
-      if (key !== 'page') next.delete('page');
       return next;
     });
   }, [setSearchParams]);
@@ -61,19 +56,17 @@ export default function Shop() {
     if (search) params.set('search', search);
     if (inStock) params.set('inStock', inStock);
     if (onSale) params.set('onSale', onSale);
-    params.set('limit', PER_PAGE);
-    params.set('offset', (page - 1) * PER_PAGE);
+    params.set('limit', 1000);
+    params.set('offset', 0);
 
     api.get(`/products?${params}`)
       .then(r => {
         setProducts(r.data.data.products);
-        setTotal(r.data.data.total);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [category, brand, sort, search, inStock, onSale, page]);
+  }, [category, brand, sort, search, inStock, onSale]);
 
-  const totalPages = Math.ceil(total / PER_PAGE);
   const activeFilterCount = [category, brand, inStock, onSale, search].filter(Boolean).length;
 
   return (
@@ -167,55 +160,9 @@ export default function Shop() {
                 </button>
               </div>
             ) : (
-              <>
-                <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
-                  {products.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
-                </div>
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="mt-10 flex items-center justify-center gap-2">
-                    <button
-                      disabled={page <= 1}
-                      onClick={() => setFilter('page', String(page - 1))}
-                      className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30"
-                    >
-                      Previous
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-                      .reduce((acc, p, i, arr) => {
-                        if (i > 0 && p - arr[i - 1] > 1) acc.push('...');
-                        acc.push(p);
-                        return acc;
-                      }, [])
-                      .map((p, i) =>
-                        p === '...' ? (
-                          <span key={`dot-${i}`} className="px-2 text-slate-400">...</span>
-                        ) : (
-                          <button
-                            key={p}
-                            onClick={() => setFilter('page', String(p))}
-                            className={`h-10 w-10 rounded-lg text-sm font-medium transition-colors ${
-                              p === page
-                                ? 'bg-primary-500 text-white shadow-sm'
-                                : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-                            }`}
-                          >
-                            {p}
-                          </button>
-                        )
-                      )}
-                    <button
-                      disabled={page >= totalPages}
-                      onClick={() => setFilter('page', String(page + 1))}
-                      className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30"
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
-              </>
+              <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
+                {products.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
+              </div>
             )}
           </div>
         </div>

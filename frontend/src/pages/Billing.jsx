@@ -47,6 +47,9 @@ export default function Billing() {
   const [customerSearchState, setCustomerSearchState] = useState('idle');
   const [registerAsLoyalty, setRegisterAsLoyalty] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestTimer = useRef(null);
 
   const [payments, setPayments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -441,8 +444,37 @@ export default function Billing() {
   );
   const remaining = grandTotal - paidSoFar;
 
+  function handleCustomerInput(value) {
+    setPhoneInput(value);
+    setShowSuggestions(false);
+    clearTimeout(suggestTimer.current);
+    if (value.trim().length < 3) { setSuggestions([]); return; }
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const res = await client.get(`/customers/search?q=${encodeURIComponent(value.trim())}`);
+        setSuggestions(res.data.data || []);
+        setShowSuggestions(true);
+      } catch { setSuggestions([]); }
+    }, 300);
+  }
+
+  async function selectSuggestion(c) {
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setPhoneInput(c.phone || '');
+    try {
+      const res = await client.get(`/customers/${c.id}`);
+      setCustomer(res.data.data);
+      setCustomerSearchState('idle');
+      if (Number(res.data.data.credit_balance) !== 0) {
+        toast.warning(`Customer has Rs. ${Math.abs(Number(res.data.data.credit_balance)).toFixed(2)} outstanding credit`);
+      }
+    } catch { setError('Customer lookup failed'); }
+  }
+
   async function lookupCustomer() {
     if (!phoneInput.trim()) return;
+    setShowSuggestions(false);
     setCustomerSearchState('searching');
     setError('');
     try {
@@ -483,6 +515,8 @@ export default function Billing() {
     setCustomer(null);
     setPhoneInput('');
     setCustomerSearchState('idle');
+    setSuggestions([]);
+    setShowSuggestions(false);
     setPayments((prev) => prev.filter((p) => p.method !== 'store_credit'));
   }
 
@@ -786,26 +820,58 @@ export default function Billing() {
                 </motion.div>
               ) : (
                 <div>
-                  <div className="flex gap-2">
-                    <input
-                      ref={phoneRef}
-                      type="text"
-                      value={phoneInput}
-                      onChange={(e) => setPhoneInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && lookupCustomer()}
-                      placeholder="Phone number (F3)"
-                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-brand-500"
-                    />
-                    <button onClick={lookupCustomer}
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
-                      Find
-                    </button>
+                  <div className="relative">
+                    <div className="flex gap-2">
+                      <input
+                        ref={phoneRef}
+                        type="text"
+                        value={phoneInput}
+                        onChange={(e) => handleCustomerInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { setShowSuggestions(false); lookupCustomer(); } if (e.key === 'Escape') setShowSuggestions(false); }}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                        placeholder="Phone or name (F3)"
+                        className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-brand-500"
+                      />
+                      <button onClick={lookupCustomer}
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                        Find
+                      </button>
+                    </div>
+                    {showSuggestions && (
+                      <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                        {suggestions.length > 0 ? suggestions.map(s => (
+                          <button key={s.id} onMouseDown={() => selectSuggestion(s)}
+                            className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-brand-50 dark:hover:bg-slate-700">
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium text-slate-800 dark:text-white">{s.full_name || 'Unnamed'}</span>
+                              <span className="ml-2 font-mono text-xs text-slate-500 dark:text-slate-400">{s.phone}</span>
+                            </div>
+                            {s.customer_type === 'loyalty' && (
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                s.loyalty_tier === 'gold' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                s.loyalty_tier === 'platinum' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                              }`}>{s.loyalty_tier}</span>
+                            )}
+                            {s.credit_balance !== 0 && (
+                              <span className="shrink-0 text-[10px] font-medium text-red-500">owes {money(Math.abs(s.credit_balance))}</span>
+                            )}
+                          </button>
+                        )) : (
+                          <div className="px-3 py-3 text-center text-sm text-slate-500 dark:text-slate-400">
+                            No customer found
+                            <button onMouseDown={() => { setShowSuggestions(false); setCustomerSearchState('not_found'); }}
+                              className="ml-1 font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">— Create new?</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <AnimatePresence>
                     {customerSearchState === 'not_found' && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                         className="mt-2 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/40 dark:bg-amber-900/10">
-                        <p className="mb-2 text-amber-800 dark:text-amber-400">No customer found for this number.</p>
+                        <p className="mb-2 text-amber-800 dark:text-amber-400">No customer found. Create a new one:</p>
                         <input type="text" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)}
                           placeholder="Name (optional)"
                           className="mb-2 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-brand-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white" />

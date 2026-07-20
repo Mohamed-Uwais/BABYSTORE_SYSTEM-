@@ -216,7 +216,7 @@ export default function Inventory() {
       if (!map.has(row.id)) {
         map.set(row.id, { id: row.id, name: row.name, category_name: row.category_name, brand_name: row.brand_name,
           category_id: row.category_id, brand_id: row.brand_id, description: row.description,
-          is_active: row.is_active, tags: row.tags || [], images: row.images || [], variants: [] });
+          is_active: row.is_active, show_on_website: row.show_on_website, tags: row.tags || [], images: row.images || [], variants: [] });
       }
       if (row.variant_id) map.get(row.id).variants.push(row);
     }
@@ -288,6 +288,20 @@ export default function Inventory() {
                       <span className="text-xs text-slate-400 dark:text-slate-500">
                         {product.category_name}{product.brand_name ? ` · ${product.brand_name}` : ''}
                       </span>
+                      <button
+                        onClick={async () => {
+                          const next = !product.show_on_website;
+                          try {
+                            await client.patch(`/products/${product.id}/website-visibility`, { show: next });
+                            setProducts(prev => prev.map(p => p.id === product.id ? { ...p, show_on_website: next } : p));
+                            toast.success(next ? 'Showing on website' : 'Hidden from website');
+                          } catch { toast.error('Failed to update'); }
+                        }}
+                        title={product.show_on_website !== false ? 'Visible on website — click to hide' : 'Hidden from website — click to show'}
+                        className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${product.show_on_website !== false ? 'border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400' : 'border-slate-300 text-slate-400 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-500'}`}
+                      >
+                        {product.show_on_website !== false ? '👁 Website' : '👁‍🗨 Hidden'}
+                      </button>
                       <button onClick={() => setEditingProduct(product)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">Edit</button>
                       <button onClick={() => setConfirmDelete({ type: 'product', item: product })} className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">Delete</button>
                     </div>
@@ -299,6 +313,7 @@ export default function Inventory() {
                           <th className="pb-2 font-medium">Variant</th>
                           <th className="pb-2 font-medium">SKU</th>
                           <th className="pb-2 text-right font-medium">Cost</th>
+                          <th className="pb-2 text-right font-medium">Wholesale</th>
                           <th className="pb-2 text-right font-medium">Retail</th>
                           <th className="pb-2 text-right font-medium">Stock</th>
                           <th className="pb-2 text-right font-medium">Actions</th>
@@ -346,7 +361,7 @@ function VariantRow({ v, onEdit, onAdjust, onHistory, onDelete, onPriceUpdate, c
       await client.put(`/products/variants/${v.variant_id}`, {
         sku: v.sku, barcode: v.barcode, variant_label: v.variant_label,
         cost_price: field === 'cost_price' ? Number(priceValue) : v.cost_price,
-        wholesale_price: v.wholesale_price,
+        wholesale_price: field === 'wholesale_price' ? Number(priceValue) : v.wholesale_price,
         retail_price: field === 'retail_price' ? Number(priceValue) : v.retail_price,
         mrp: v.mrp, discount_type: v.discount_type || 'none', discount_value: v.discount_value || 0,
         low_stock_threshold: v.low_stock_threshold,
@@ -385,6 +400,7 @@ function VariantRow({ v, onEdit, onAdjust, onHistory, onDelete, onPriceUpdate, c
       </td>
       <td className="py-2.5 font-mono text-slate-500 dark:text-slate-400">{v.sku}</td>
       <td className="py-2.5 text-right">{renderPrice('cost_price', v.cost_price)}</td>
+      <td className="py-2.5 text-right">{renderPrice('wholesale_price', v.wholesale_price)}</td>
       <td className="py-2.5 text-right">{renderPrice('retail_price', v.retail_price)}</td>
       <td className="py-2.5 text-right">
         <span className={`font-mono ${low ? 'font-medium text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{v.current_stock}</span>

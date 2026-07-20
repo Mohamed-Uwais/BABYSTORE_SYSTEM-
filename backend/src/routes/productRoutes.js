@@ -13,6 +13,7 @@ router.put('/variants/:variantId', productController.editVariant);
 router.get('/variants/:variantId/price-tiers', productController.getPriceTiers);
 router.put('/variants/:variantId/price-tiers', productController.savePriceTiers);
 router.delete('/variants/:variantId', productController.deleteVariant);
+router.patch('/:id/website-visibility', productController.toggleWebsiteVisibility);
 router.delete('/:id', productController.deleteProduct);
 router.get('/:id/has-orders', productController.checkOrderHistory);
 router.post('/upload-image', upload.single('image'), productController.uploadImage);

@@ -80,4 +80,24 @@ async function recordRepayment(req, res) {
   }
 }
 
-module.exports = { listCustomers, getCustomer, lookupByPhone, addCustomer, updateCustomer, convertToLoyalty, recordRepayment };
+async function searchCustomers(req, res) {
+  try {
+    const q = (req.query.q || '').trim();
+    if (q.length < 3) return res.json({ success: true, data: [] });
+    const like = `%${q}%`;
+    const db = require('../config/db');
+    const [rows] = await db.query(
+      `SELECT id, full_name, phone, loyalty_tier, customer_type, credit_balance
+       FROM customers
+       WHERE phone LIKE ? OR full_name LIKE ?
+       ORDER BY full_name ASC LIMIT 10`,
+      [like, like]
+    );
+    res.json({ success: true, data: rows.map(r => ({ ...r, credit_balance: Number(r.credit_balance) })) });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Search failed' });
+  }
+}
+
+module.exports = { listCustomers, getCustomer, lookupByPhone, addCustomer, updateCustomer, convertToLoyalty, recordRepayment, searchCustomers };

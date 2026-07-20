@@ -1,5 +1,6 @@
 const productModel = require('../models/productModel');
 const imageModel = require('../models/productImageModel');
+const db = require('../config/db');
 
 async function listProducts(req, res) {
   try {
@@ -218,10 +219,22 @@ async function deleteProductImage(req, res) {
   }
 }
 
+async function toggleWebsiteVisibility(req, res) {
+  try {
+    const { show } = req.body;
+    await db.query('UPDATE products SET show_on_website = ? WHERE id = ?', [show ? 1 : 0, req.params.id]);
+    res.json({ success: true, show_on_website: !!show });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Failed to update visibility' });
+  }
+}
+
 module.exports = {
   listProducts, getProduct, addProduct, addProductWithVariants,
   editProduct, editVariant, uploadImage, lowStock,
   deleteProduct, deleteVariant, checkOrderHistory,
   getPriceTiers, savePriceTiers,
   getProductImages, addProductImage, addProductImageByUrl, reorderImages, setImagePrimary, deleteProductImage,
+  toggleWebsiteVisibility,
 };

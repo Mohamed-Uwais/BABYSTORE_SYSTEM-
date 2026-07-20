@@ -2,7 +2,7 @@ const db = require('../config/db');
 const imageModel = require('./productImageModel');
 
 async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSale, sort, search, limit = 24, offset = 0 }) {
-  let where = 'p.is_active = TRUE AND pv.is_active = TRUE';
+  let where = 'p.is_active = TRUE AND p.show_on_website = TRUE AND pv.is_active = TRUE';
   const params = [];
 
   if (category) { where += ' AND c.name = ?'; params.push(category); }
@@ -92,7 +92,7 @@ async function getProductBySlug(slug) {
     FROM products p
     LEFT JOIN categories c ON p.category_id = c.id
     LEFT JOIN brands b ON p.brand_id = b.id
-    WHERE p.slug = ? AND p.is_active = TRUE
+    WHERE p.slug = ? AND p.is_active = TRUE AND p.show_on_website = TRUE
   `, [slug]);
   if (!product) return null;
 
@@ -141,7 +141,7 @@ async function getProductBySlug(slug) {
     JOIN product_variants pv ON pv.product_id = p.id
     LEFT JOIN brands b ON p.brand_id = b.id
     WHERE p.category_id = (SELECT category_id FROM products WHERE id = ?)
-      AND p.id != ? AND p.is_active = TRUE AND pv.is_active = TRUE
+      AND p.id != ? AND p.is_active = TRUE AND p.show_on_website = TRUE AND pv.is_active = TRUE
     GROUP BY p.id
     ORDER BY RAND()
     LIMIT 4
@@ -156,7 +156,7 @@ async function getCategories() {
   const [rows] = await db.query(`
     SELECT c.id, c.name, COUNT(DISTINCT p.id) AS product_count
     FROM categories c
-    JOIN products p ON p.category_id = c.id AND p.is_active = TRUE
+    JOIN products p ON p.category_id = c.id AND p.is_active = TRUE AND p.show_on_website = TRUE
     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = TRUE
     GROUP BY c.id
     ORDER BY c.name
@@ -168,7 +168,7 @@ async function getBrands() {
   const [rows] = await db.query(`
     SELECT b.id, b.name, COUNT(DISTINCT p.id) AS product_count
     FROM brands b
-    JOIN products p ON p.brand_id = b.id AND p.is_active = TRUE
+    JOIN products p ON p.brand_id = b.id AND p.is_active = TRUE AND p.show_on_website = TRUE
     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = TRUE
     GROUP BY b.id
     ORDER BY b.name
@@ -191,7 +191,7 @@ async function getBestSellers(limit = 8) {
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     JOIN product_variants pv ON pv.id = oi.variant_id AND pv.is_active = TRUE
-    JOIN products p ON p.id = pv.product_id AND p.is_active = TRUE
+    JOIN products p ON p.id = pv.product_id AND p.is_active = TRUE AND p.show_on_website = TRUE
     LEFT JOIN brands b ON p.brand_id = b.id
     WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND o.status IN ('completed', 'delivered')
     GROUP BY pv.id
@@ -209,7 +209,7 @@ async function getBestSellers(limit = 8) {
       FROM products p
       JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = TRUE
       LEFT JOIN brands b ON p.brand_id = b.id
-      WHERE p.is_active = TRUE
+      WHERE p.is_active = TRUE AND p.show_on_website = TRUE
       GROUP BY p.id
       ORDER BY p.created_at DESC
       LIMIT ?
@@ -247,7 +247,7 @@ async function getNewArrivals(limit = 8) {
     FROM products p
     JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = TRUE
     LEFT JOIN brands b ON p.brand_id = b.id
-    WHERE p.is_active = TRUE
+    WHERE p.is_active = TRUE AND p.show_on_website = TRUE
     GROUP BY p.id
     ORDER BY p.created_at DESC
     LIMIT ?

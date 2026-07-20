@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Layout from './components/Layout';
 import { ContentProvider } from './context/ContentContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const Home = lazy(() => import('./pages/Home'));
 const Shop = lazy(() => import('./pages/Shop'));
@@ -27,25 +28,28 @@ export default function App() {
   const location = useLocation();
 
   return (
-    <ContentProvider>
-      <Layout>
-        <Suspense fallback={<PageLoader />}>
-          <AnimatePresence mode="wait">
-            <Routes location={location} key={location.pathname}>
-              <Route path="/" element={<Home />} />
-              <Route path="/shop" element={<Shop />} />
-              <Route path="/product/:slug" element={<ProductDetail />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/order-confirmation/:orderNumber" element={<OrderConfirmation />} />
-              <Route path="/track" element={<TrackOrder />} />
-              <Route path="/blog" element={<Blog />} />
-              <Route path="/blog/:slug" element={<BlogPost />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/contact" element={<Contact />} />
-            </Routes>
-          </AnimatePresence>
-        </Suspense>
-      </Layout>
-    </ContentProvider>
+    <ErrorBoundary>
+      <ContentProvider>
+        <Layout>
+          <Suspense fallback={<PageLoader />}>
+            <AnimatePresence mode="wait">
+              <Routes location={location} key={location.pathname}>
+                <Route path="/" element={<Home />} />
+                <Route path="/shop" element={<Shop />} />
+                <Route path="/product/:slug" element={<ProductDetail />} />
+                <Route path="/checkout" element={<Checkout />} />
+                <Route path="/order-confirmation/:orderNumber" element={<OrderConfirmation />} />
+                <Route path="/track" element={<TrackOrder />} />
+                <Route path="/blog" element={<Blog />} />
+                <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/contact" element={<Contact />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </AnimatePresence>
+          </Suspense>
+        </Layout>
+      </ContentProvider>
+    </ErrorBoundary>
   );
 }

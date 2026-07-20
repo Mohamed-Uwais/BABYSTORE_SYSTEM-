@@ -22,6 +22,7 @@ export default function ProductDetail() {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
+  const [selectedTier, setSelectedTier] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -34,6 +35,11 @@ export default function ProductDetail() {
       .catch(() => setProduct(null))
       .finally(() => setLoading(false));
   }, [slug]);
+
+  useEffect(() => {
+    setSelectedTier(null);
+    setQty(1);
+  }, [selectedVariant]);
 
   if (loading) {
     return (
@@ -56,8 +62,6 @@ export default function ProductDetail() {
     );
   }
 
-  const [selectedTier, setSelectedTier] = useState(null);
-
   const v = selectedVariant;
   const hasTiers = v?.price_tiers?.length > 0;
   const hasDiscount = v && v.discount_type !== 'none' && Number(v.discount_value) > 0;
@@ -75,11 +79,6 @@ export default function ProductDetail() {
   const bestValueIdx = tierOptions.length > 1
     ? tierOptions.reduce((best, t, i) => (t.tier_price / t.min_quantity < tierOptions[best].tier_price / tierOptions[best].min_quantity ? i : best), 0)
     : -1;
-
-  useEffect(() => {
-    setSelectedTier(null);
-    setQty(1);
-  }, [selectedVariant]);
 
   const effectiveQty = selectedTier ? selectedTier.min_quantity : qty;
 
