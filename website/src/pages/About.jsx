@@ -7,7 +7,7 @@ import SEO from '../components/SEO';
 export default function About() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <SEO title="About" path="/about" description="Learn about Littora Diapers — Sri Lanka's specialist in diapers, wet wipes, and trending baby items. Better prices, faster delivery, always in stock." />
+      <SEO title="About" path="/about" description="Learn about LITTORA — Sri Lanka's specialist in diapers, wet wipes, and trending baby items. Better prices, faster delivery, always in stock." />
       <PageHero backgroundImage="/images/hero/hero-about.jpg" headline="Our Story" subtitle="Why thousands of parents trust Littora" focusPoint="center center" />
 
       {/* Story */}
@@ -17,7 +17,7 @@ export default function About() {
             <div>
               <h2 className="text-2xl font-bold text-slate-900">Our Story</h2>
               <p className="mt-4 text-sm leading-relaxed text-slate-600">
-                Littora Diapers was born from a simple observation — Sri Lankan parents were paying too much for diapers and wipes. We decided to change that by offering genuine brands at better prices with faster delivery.
+                LITTORA was born from a simple observation — Sri Lankan parents were paying too much for diapers and wipes. We decided to change that by offering genuine brands at better prices with faster delivery.
               </p>
               <p className="mt-3 text-sm leading-relaxed text-slate-600">
                 We carefully source authentic products from trusted brands like Pampers, Huggies, MamyPoko, Pigeon, and Johnson's, ensuring every item meets the highest quality standards.

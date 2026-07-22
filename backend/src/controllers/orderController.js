@@ -1,4 +1,5 @@
 const orderModel = require('../models/orderModel');
+const db = require('../config/db');
 
 async function checkout(req, res) {
   try {
@@ -124,4 +125,28 @@ async function rejectOrder(req, res) {
   }
 }
 
-module.exports = { checkout, getOrder, listOrders, bestSellers, refundOrder, getReturns, searchForReturn, getReturnItems, returnExchange, getPendingOrders, acceptOrder, rejectOrder };
+async function adjustTotal(req, res) {
+  try {
+    const { id } = req.params;
+    const { grand_total, reason } = req.body;
+    if (grand_total == null || !reason?.trim()) {
+      return res.status(400).json({ success: false, message: 'New total and reason are required' });
+    }
+    const [[order]] = await db.query('SELECT id, grand_total FROM orders WHERE id = ?', [id]);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    const oldTotal = Number(order.grand_total);
+    const newTotal = Number(grand_total);
+    await db.query('UPDATE orders SET grand_total = ? WHERE id = ?', [newTotal, id]);
+    await db.query(
+      'INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)',
+      [id, 'amount_adjusted', req.user.id, `Total changed from Rs.${oldTotal.toFixed(2)} to Rs.${newTotal.toFixed(2)}. Reason: ${reason.trim()}`]
+    );
+    res.json({ success: true, message: 'Order total updated' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+module.exports = { checkout, getOrder, listOrders, bestSellers, refundOrder, getReturns, searchForReturn, getReturnItems, returnExchange, getPendingOrders, acceptOrder, rejectOrder, adjustTotal };

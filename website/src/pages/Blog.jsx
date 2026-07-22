@@ -24,7 +24,7 @@ export default function Blog() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <SEO title="Blog" path="/blog" description="Parenting tips, baby care guides, and product reviews from Littora Diapers. Expert advice for new parents." />
+      <SEO title="Blog" path="/blog" description="Parenting tips, baby care guides, and product reviews from LITTORA. Expert advice for new parents." />
       <PageHero backgroundImage="/images/hero/hero-blog.jpg" headline="Tips & Guides" subtitle="Helpful advice for Sri Lankan parents" focusPoint="center 40%" />
 
       <div className="mx-auto max-w-7xl px-4 py-12 lg:px-8">

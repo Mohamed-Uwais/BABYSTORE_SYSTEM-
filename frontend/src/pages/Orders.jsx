@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import PageWrapper from '../components/PageWrapper';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
@@ -38,6 +39,7 @@ const REJECT_REASONS = ['Out of stock', 'Invalid address', 'Suspicious order', '
 
 export default function Orders() {
   const toast = useToast();
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -66,6 +68,11 @@ export default function Orders() {
   const [assignTracking, setAssignTracking] = useState('');
   const [assigning, setAssigning] = useState(false);
 
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustTotal, setAdjustTotal] = useState('');
+  const [adjustReason, setAdjustReason] = useState('');
+  const [adjustSubmitting, setAdjustSubmitting] = useState(false);
+
   useEffect(() => {
     loadOrders();
     loadPending();
@@ -84,6 +91,21 @@ export default function Orders() {
       const res = await client.get('/orders/pending');
       setPendingOrders(res.data.data || []);
     } catch {}
+  }
+
+  async function handleAdjustTotal() {
+    if (!adjustTotal || !adjustReason.trim()) return;
+    setAdjustSubmitting(true);
+    try {
+      await client.patch(`/orders/${selectedOrder.id}/adjust-total`, { grand_total: Number(adjustTotal), reason: adjustReason.trim() });
+      toast.success('Order total updated');
+      setAdjustOpen(false);
+      setAdjustTotal('');
+      setAdjustReason('');
+      openOrder(selectedOrder.id);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update total');
+    } finally { setAdjustSubmitting(false); }
   }
 
   async function handleAccept(orderId) {
@@ -373,7 +395,18 @@ export default function Orders() {
                 {Number(selectedOrder.discount_total) > 0 && (
                   <div className="flex justify-between text-red-600 dark:text-red-400"><span>Discount</span><span className="font-mono">-{money(selectedOrder.discount_total)}</span></div>
                 )}
-                <div className="mt-1 flex justify-between font-semibold text-slate-900 dark:text-white"><span>Total</span><span className="font-mono">{money(selectedOrder.grand_total)}</span></div>
+                <div className="mt-1 flex items-center justify-between font-semibold text-slate-900 dark:text-white">
+                  <span>Total</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono">{money(selectedOrder.grand_total)}</span>
+                    {user?.role === 'owner' && (
+                      <button onClick={() => { setAdjustTotal(Number(selectedOrder.grand_total).toFixed(2)); setAdjustReason(''); setAdjustOpen(true); }}
+                        className="rounded-lg border border-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
@@ -516,6 +549,26 @@ export default function Orders() {
             {rejecting ? 'Rejecting...' : 'Reject Order'}
           </button>
         </form>
+      </Modal>
+
+      <Modal open={adjustOpen} onClose={() => setAdjustOpen(false)} title="Adjust Order Total">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Change the grand total for order <span className="font-mono font-semibold">{selectedOrder?.order_number}</span></p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">New Total (Rs.)</label>
+            <input type="number" step="0.01" min="0" value={adjustTotal} onChange={e => setAdjustTotal(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-mono text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Reason for adjustment *</label>
+            <input type="text" value={adjustReason} onChange={e => setAdjustReason(e.target.value)} placeholder="e.g. Customer negotiated price"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+          </div>
+          <button onClick={handleAdjustTotal} disabled={adjustSubmitting || !adjustTotal || !adjustReason.trim()}
+            className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50">
+            {adjustSubmitting ? 'Updating...' : 'Update Total'}
+          </button>
+        </div>
       </Modal>
 
       {showLabel && selectedOrder && (

@@ -57,7 +57,7 @@ export default function TrackOrder() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <SEO title="Track Order" path="/track" description="Track your Littora Diapers order. Enter your order number to check delivery status." />
+      <SEO title="Track Order" path="/track" description="Track your LITTORA order. Enter your order number to check delivery status." />
       <PageHero backgroundImage="/images/hero/hero-track.jpg" headline="Track Your Order" subtitle="Enter your order number to see delivery status" focusPoint="center 80%" />
 
       <div className="bg-white py-12">

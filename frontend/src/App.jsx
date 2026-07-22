@@ -15,6 +15,7 @@ import DailySummary from './pages/DailySummary';
 import Deliveries from './pages/Deliveries';
 import Promotions from './pages/Promotions';
 import Conversations from './pages/Conversations';
+import Quotations from './pages/Quotations';
 import WebsiteContent from './pages/WebsiteContent';
 import ProtectedRoute from './components/ProtectedRoute';
 import PermissionRoute from './components/PermissionRoute';
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/daily-summary" element={<PermissionRoute permission="reports"><DailySummary /></PermissionRoute>} />
           <Route path="/deliveries" element={<PermissionRoute permission="deliveries"><Deliveries /></PermissionRoute>} />
           <Route path="/promotions" element={<PermissionRoute permission="inventory"><Promotions /></PermissionRoute>} />
+          <Route path="/quotations" element={<PermissionRoute permission="billing"><Quotations /></PermissionRoute>} />
           <Route path="/conversations" element={<PermissionRoute permission="reports"><Conversations /></PermissionRoute>} />
           <Route path="*" element={<DefaultRedirect />} />
         </Routes>

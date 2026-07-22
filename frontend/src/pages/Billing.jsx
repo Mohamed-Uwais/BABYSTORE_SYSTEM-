@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import BarcodeScanner from '../components/BarcodeScanner';
 import Receipt from '../components/Receipt';
+import Quotation from '../components/Quotation';
 import PageWrapper from '../components/PageWrapper';
 import EmptyState from '../components/EmptyState';
 import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
@@ -76,6 +77,9 @@ export default function Billing() {
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [tagFilter, setTagFilter] = useState('');
+  const [wholesaleMode, setWholesaleMode] = useState(false);
+  const [quotationId, setQuotationId] = useState(null);
+  const [generatingQuote, setGeneratingQuote] = useState(false);
 
   const [appliedPromos, setAppliedPromos] = useState([]);
   const [promoDiscount, setPromoDiscount] = useState(0);
@@ -170,8 +174,8 @@ export default function Billing() {
           l.variant_id === p.variant_id ? { ...l, quantity: newQty, unit_price: newPrice, active_tier: tier } : l,
         );
       }
-      const basePrice = Number(p.retail_price);
-      const tiers = p.price_tiers || [];
+      const basePrice = wholesaleMode && p.wholesale_price ? Number(p.wholesale_price) : Number(p.retail_price);
+      const tiers = wholesaleMode ? [] : (p.price_tiers || []);
       return [
         ...prev,
         {
@@ -185,6 +189,7 @@ export default function Billing() {
           max_stock: p.current_stock,
           price_tiers: tiers,
           active_tier: null,
+          is_wholesale: wholesaleMode,
         },
       ];
     });
@@ -578,6 +583,34 @@ export default function Billing() {
     return couriers.find(c => c.code === deliveryMethod) || null;
   }
 
+  async function generateQuotation() {
+    if (cart.length === 0) return;
+    setGeneratingQuote(true);
+    try {
+      const res = await client.post('/quotations', {
+        customer_id: customer?.id || null,
+        pricing_mode: wholesaleMode ? 'wholesale' : 'retail',
+        items: cart.map(l => ({
+          variant_id: l.variant_id,
+          product_name: l.product_name,
+          variant_label: l.variant_label,
+          sku: l.sku,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+        })),
+        subtotal,
+        delivery_fee: effectiveDeliveryFee,
+        discount_total: promoDiscount + manualDiscount,
+        grand_total: grandTotal,
+        notes: deliveryNotes || null,
+      });
+      setQuotationId(res.data.data.id);
+      toast.success(`Quotation ${res.data.data.quotation_number} created`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create quotation');
+    } finally { setGeneratingQuote(false); }
+  }
+
   async function completeSale() {
     setError('');
     setSubmitting(true);
@@ -603,6 +636,7 @@ export default function Billing() {
           amount: parseFloat(p.amount),
         })),
         fulfillment_type: effectiveFulfillment,
+        pricing_mode: wholesaleMode ? 'wholesale' : 'retail',
         delivery_fee: effectiveDeliveryFee,
         delivery_zone_id: selectedZone || null,
         delivery_address: receiverAddress || null,
@@ -630,6 +664,7 @@ export default function Billing() {
       setAppliedPromos([]); setPromoDiscount(0); setFreeDelivery(false);
       setCouponApplied(null); setCouponCode(''); setCouponError('');
       setManualDiscountValue('');
+      setWholesaleMode(false);
       loadProducts();
       loadBestSellers();
       toast.success(`Sale complete — ${orderData.order_number}`);
@@ -681,7 +716,7 @@ export default function Billing() {
 
   useKeyboardShortcuts([
     { key: 'F1', action: () => setShowShortcuts(v => !v), allowInInput: true },
-    { key: 'F2', action: () => { setCart([]); setSearch(''); clearCustomer(); resetDelivery(); setAppliedPromos([]); setPromoDiscount(0); setFreeDelivery(false); setCouponApplied(null); setCouponCode(''); setPayments([]); setSuccessOrder(null); setManualDiscountValue(''); setReturnMode(false); setReturnOrder(null); setReturnSelections([]); setReturnItems([]); setReturnResult(null); searchRef.current?.focus(); toast.info('New sale'); }, allowInInput: true },
+    { key: 'F2', action: () => { setCart([]); setSearch(''); clearCustomer(); resetDelivery(); setAppliedPromos([]); setPromoDiscount(0); setFreeDelivery(false); setCouponApplied(null); setCouponCode(''); setPayments([]); setSuccessOrder(null); setManualDiscountValue(''); setReturnMode(false); setReturnOrder(null); setReturnSelections([]); setReturnItems([]); setReturnResult(null); setWholesaleMode(false); searchRef.current?.focus(); toast.info('New sale'); }, allowInInput: true },
     { key: 'F3', action: () => phoneRef.current?.focus(), allowInInput: true },
     { key: 'F4', action: () => { setScanMessage(null); setScannerOpen(true); }, allowInInput: true },
     { key: 'Escape', action: () => { if (showShortcuts) setShowShortcuts(false); else if (scannerOpen) setScannerOpen(false); else if (receiptOrderId) setReceiptOrderId(null); else if (successOrder) setSuccessOrder(null); }, allowInInput: true },
@@ -695,7 +730,7 @@ export default function Billing() {
     <PageWrapper className="flex h-full flex-col bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         {/* Left: product search + grid */}
-        <div className="flex flex-1 flex-col overflow-hidden border-b border-slate-200 dark:border-slate-800 md:w-2/3 md:border-b-0 md:border-r">
+        <div className="flex min-h-[50vh] flex-1 flex-col overflow-hidden border-b border-slate-200 dark:border-slate-800 md:min-h-0 md:w-2/3 md:border-b-0 md:border-r">
           <div className="border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:p-4">
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -753,7 +788,7 @@ export default function Billing() {
                       key={p.variant_id}
                       name={p.product_name}
                       label={p.variant_label}
-                      price={p.retail_price}
+                      price={wholesaleMode && p.wholesale_price ? p.wholesale_price : p.retail_price}
                       stock={p.current_stock}
                       onClick={() => addToCart(p)}
                     />
@@ -780,7 +815,7 @@ export default function Billing() {
                     key={p.variant_id}
                     name={p.name}
                     label={p.variant_label}
-                    price={p.retail_price}
+                    price={wholesaleMode && p.wholesale_price ? p.wholesale_price : p.retail_price}
                     stock={p.current_stock}
                     onClick={() => addToCart(p)}
                   />
@@ -793,6 +828,31 @@ export default function Billing() {
         {/* Right: cart + customer + payment + fulfillment */}
         <div className="flex flex-col overflow-hidden bg-white dark:bg-slate-900 md:w-1/3">
           <div className="flex-1 overflow-y-auto p-3 md:p-4">
+            {/* Wholesale toggle (owner only) */}
+            {user?.role === 'owner' && (
+              <div className="mb-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Pricing Mode</span>
+                <div className="flex items-center gap-1 rounded-lg bg-slate-200 p-0.5 dark:bg-slate-700">
+                  <button onClick={() => { if (wholesaleMode) { setWholesaleMode(false); setCart([]); } }}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition ${!wholesaleMode ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-600 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+                    Retail
+                  </button>
+                  <button onClick={() => { if (!wholesaleMode) { setWholesaleMode(true); setCart([]); } }}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition ${wholesaleMode ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>
+                    Wholesale
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Wholesale mode badge */}
+            {wholesaleMode && (
+              <div className="mb-3 flex items-center gap-2 rounded-xl bg-amber-100 px-3 py-2 dark:bg-amber-900/30">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">WHOLESALE MODE</span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-500">All prices use wholesale rates</span>
+              </div>
+            )}
+
             {/* Customer */}
             <section className="mb-5">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Customer</h3>
@@ -1321,15 +1381,21 @@ export default function Billing() {
                 </button>
               </>
             ) : (
-            <button onClick={completeSale} disabled={!canCompleteSale}
-              className="w-full rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 py-3 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition-all duration-200 hover:shadow-lg hover:shadow-brand-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
-              {submitting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  Processing...
-                </span>
-              ) : 'Complete sale'}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={completeSale} disabled={!canCompleteSale}
+                className="flex-1 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 py-3 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition-all duration-200 hover:shadow-lg hover:shadow-brand-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
+                {submitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    Processing...
+                  </span>
+                ) : 'Complete sale'}
+              </button>
+              <button onClick={generateQuotation} disabled={cart.length === 0 || generatingQuote}
+                className="rounded-xl border-2 border-teal-500 px-4 py-3 text-sm font-semibold text-teal-600 transition-all hover:bg-teal-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:text-teal-400 dark:hover:bg-teal-950">
+                {generatingQuote ? '...' : 'Quote'}
+              </button>
+            </div>
             )}
           </div>
         </div>
@@ -1465,6 +1531,7 @@ export default function Billing() {
       )}
 
       {receiptOrderId && <Receipt orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
+      {quotationId && <Quotation quotationId={quotationId} onClose={() => setQuotationId(null)} />}
 
       {/* Keyboard shortcuts help */}
       <AnimatePresence>

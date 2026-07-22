@@ -2,7 +2,7 @@ const NEW_CUSTOMER = [
   "Hey there! 👋 Welcome to Littora! I'm Liya — what can I help you with?",
   "Hi! 😊 Welcome to Littora! Looking for diapers or wipes?",
   "Hey! 👋 I'm Liya from Littora. What do you need today?",
-  "Hello! 😊 Welcome to Littora Diapers! How can I help?",
+  "Hello! 😊 Welcome to LITTORA! How can I help?",
 ];
 
 const RETURNING_CUSTOMER = [

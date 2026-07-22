@@ -215,7 +215,7 @@ export default function Checkout() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <SEO title="Checkout" path="/checkout" description="Complete your order at Littora Diapers. Secure checkout with cash on delivery or bank transfer." />
+      <SEO title="Checkout" path="/checkout" description="Complete your order at LITTORA. Secure checkout with cash on delivery or bank transfer." />
       <div className="border-b border-slate-100 bg-white">
         <div className="mx-auto flex max-w-4xl items-center gap-4 px-4 py-4">
           <Link to="/shop" className="flex items-center gap-1 text-sm text-slate-500 hover:text-primary-600">

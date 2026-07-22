@@ -2,11 +2,13 @@ const API_KEY = process.env.KOOMBIYO_API_KEY;
 const BASE_URL = process.env.KOOMBIYO_API_BASE_URL || 'https://application.koombiyodelivery.lk/api';
 
 async function koombiyoFetch(endpoint, body = {}) {
+  if (!API_KEY) throw new Error('Koombiyo API key not configured');
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ apikey: API_KEY, ...body }),
   });
+  if (!res.ok) throw new Error(`Koombiyo API returned ${res.status}`);
   const data = await res.json();
   return data;
 }

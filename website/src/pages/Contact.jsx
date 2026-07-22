@@ -38,7 +38,7 @@ export default function Contact() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <SEO title="Contact" path="/contact" description="Get in touch with Littora Diapers. Call, email, or WhatsApp us for product inquiries, order support, or wholesale information." />
+      <SEO title="Contact" path="/contact" description="Get in touch with LITTORA. Call, email, or WhatsApp us for product inquiries, order support, or wholesale information." />
       <PageHero backgroundImage="/images/hero/hero-contact.jpg" headline="Get in Touch" subtitle="We're here to help — chat, call, or visit us" focusPoint="center 30%" />
 
       <div className="mx-auto max-w-5xl px-4 py-12 lg:px-8">

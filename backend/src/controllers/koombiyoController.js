@@ -39,8 +39,8 @@ async function trackOrder(req, res) {
     const result = await koombiyo.trackOrder(waybill_no);
     res.json({ success: true, data: result });
   } catch (error) {
-    console.error('Koombiyo track error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Koombiyo track error:', error.message);
+    res.status(502).json({ success: false, message: 'Tracking unavailable, try again later' });
   }
 }
 

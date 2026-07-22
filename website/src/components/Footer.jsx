@@ -90,7 +90,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-12 border-t border-slate-800 pt-6 text-center text-sm text-slate-500">
-          &copy; {new Date().getFullYear()} Littora Diapers. All rights reserved.
+          &copy; {new Date().getFullYear()} LITTORA. All rights reserved.
         </div>
       </div>
     </footer>
