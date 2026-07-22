@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
@@ -193,6 +193,10 @@ export default function Inventory() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [editingVariant, setEditingVariant] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [invSearch, setInvSearch] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const searchTimer = useRef(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => { loadAll(); }, []);
 
@@ -222,6 +226,25 @@ export default function Inventory() {
     }
     return [...map.values()];
   }, [products]);
+
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(invSearch), 300);
+    return () => clearTimeout(searchTimer.current);
+  }, [invSearch]);
+
+  const filteredGrouped = useMemo(() => {
+    if (!debouncedSearch.trim()) return grouped;
+    const q = debouncedSearch.toLowerCase();
+    return grouped.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.variants.some(v =>
+        (v.variant_label || '').toLowerCase().includes(q) ||
+        (v.sku || '').toLowerCase().includes(q) ||
+        (v.barcode || '').toLowerCase().includes(q)
+      )
+    );
+  }, [grouped, debouncedSearch]);
 
   async function handleDeleteProduct(product) {
     try {
@@ -257,6 +280,28 @@ export default function Inventory() {
             </button>
           </div>
 
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input
+                type="text"
+                value={invSearch}
+                onChange={e => setInvSearch(e.target.value)}
+                placeholder="Search by name, SKU, barcode..."
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-brand-500"
+              />
+              {invSearch && (
+                <button onClick={() => setInvSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
+            <button onClick={() => setScannerOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+              <ScanIcon className="h-4 w-4" /> Scan
+            </button>
+          </div>
+
           {error && <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">{error}</div>}
 
           <AnimatePresence>
@@ -269,13 +314,19 @@ export default function Inventory() {
             )}
           </AnimatePresence>
 
-          {loading ? <TableSkeleton rows={8} /> : grouped.length === 0 ? (
-            <EmptyState icon="📦" title="No products yet" description="Add your first product to get started" action={
-              <button onClick={() => setShowAddProduct(true)} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">+ Add product</button>
-            } />
+          {loading ? <TableSkeleton rows={8} /> : filteredGrouped.length === 0 ? (
+            debouncedSearch ? (
+              <EmptyState icon="🔍" title="No results" description={`Nothing matches "${debouncedSearch}"`} action={
+                <button onClick={() => setInvSearch('')} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">Clear search</button>
+              } />
+            ) : (
+              <EmptyState icon="📦" title="No products yet" description="Add your first product to get started" action={
+                <button onClick={() => setShowAddProduct(true)} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">+ Add product</button>
+              } />
+            )
           ) : (
             <div className="space-y-4">
-              {grouped.map((product) => (
+              {filteredGrouped.map((product) => (
                 <section key={product.id} className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -345,6 +396,12 @@ export default function Inventory() {
       {editingProduct && <EditProductDrawer product={editingProduct} categories={categories} brands={brands} initialImages={editingProduct.images || []} onClose={() => setEditingProduct(null)} onSaved={() => { setEditingProduct(null); loadAll(); toast.success('Product updated'); }} />}
       {editingVariant && <EditVariantDrawer variant={editingVariant} onClose={() => setEditingVariant(null)} onSaved={() => { setEditingVariant(null); loadAll(); toast.success('Variant updated'); }} />}
       {confirmDelete && <ConfirmDeleteModal item={confirmDelete} onClose={() => setConfirmDelete(null)} onConfirm={() => confirmDelete.type === 'product' ? handleDeleteProduct(confirmDelete.item) : handleDeleteVariant(confirmDelete.item)} />}
+      {scannerOpen && (
+        <BarcodeScanner
+          onScan={(code) => { setScannerOpen(false); setInvSearch(code); }}
+          onClose={() => setScannerOpen(false)}
+        />
+      )}
     </PageWrapper>
   );
 }

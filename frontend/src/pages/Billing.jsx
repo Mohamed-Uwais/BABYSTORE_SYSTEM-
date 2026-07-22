@@ -838,7 +838,7 @@ export default function Billing() {
                       </button>
                     </div>
                     {showSuggestions && (
-                      <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                      <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800" style={{ maxHeight: 300 }}>
                         {suggestions.length > 0 ? suggestions.map(s => (
                           <button key={s.id} onMouseDown={() => selectSuggestion(s)}
                             className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-brand-50 dark:hover:bg-slate-700">

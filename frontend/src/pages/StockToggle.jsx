@@ -49,25 +49,24 @@ export default function StockToggle() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <PageWrapper>
-        <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="mx-auto max-w-2xl space-y-4 p-4">
-          <motion.div variants={fadeUp} className="flex items-center justify-between">
+    <div className="flex h-screen flex-col bg-slate-50 dark:bg-slate-950">
+      <PageWrapper className="flex flex-1 flex-col overflow-hidden">
+        <div className="mx-auto w-full max-w-2xl shrink-0 space-y-4 px-4 pt-4">
+          <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900 dark:text-white">Quick Stock</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">Tap to adjust stock levels</p>
             </div>
-          </motion.div>
-
-          <motion.div variants={fadeUp}>
-            <input
-              type="text"
-              placeholder="Search by name, SKU..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-brand-500 dark:focus:ring-brand-900/30"
-            />
-          </motion.div>
+          </div>
+          <input
+            type="text"
+            placeholder="Search by name, SKU..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-brand-500 dark:focus:ring-brand-900/30"
+          />
+        </div>
+        <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-4 pt-4">
 
           {loading ? (
             <div className="space-y-3">
