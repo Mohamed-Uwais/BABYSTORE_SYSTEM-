@@ -306,7 +306,7 @@ async function getStoreInfo() {
 }
 
 async function getDeliveryZones() {
-  const [rows] = await db.query('SELECT id, zone_name, base_fee FROM delivery_zones ORDER BY zone_name');
+  const [rows] = await db.query('SELECT id, zone_name, base_fee, per_additional_pack_fee FROM delivery_zones WHERE is_active = TRUE ORDER BY zone_name');
   return rows;
 }
 

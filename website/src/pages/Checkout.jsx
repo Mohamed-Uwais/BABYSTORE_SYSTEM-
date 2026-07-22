@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ChevronLeft, Truck, Store, CreditCard, Loader2, ShieldCheck, Upload, X, CheckCircle2, Image, Tag, Trash2 } from 'lucide-react';
+import { ChevronLeft, Truck, Store, CreditCard, Loader2, ShieldCheck, Upload, X, CheckCircle2, Image, Tag, Trash2, MapPin, Search } from 'lucide-react';
 import api from '../api/client';
 import { useCart } from '../context/CartContext';
 import { usePromo } from '../context/PromoContext';
@@ -11,13 +11,22 @@ function formatPrice(amount) {
   return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-async function fetchDeliveryFee(totalPacks) {
-  if (totalPacks <= 0) return { total_fee: 0, base_fee: 0, per_additional_pack_fee: 100, total_packs: 0, additional_packs_fee: 0 };
+async function fetchDeliveryFee(totalPacks, zoneId) {
+  if (totalPacks <= 0 || !zoneId) return null;
   try {
-    const r = await api.get('/delivery/calculate-fee', { params: { total_packs: totalPacks } });
+    const r = await api.get('/delivery/calculate-fee', { params: { total_packs: totalPacks, zone_id: zoneId } });
     return r.data.data;
   } catch {
-    return { total_fee: 450 + Math.max(0, totalPacks - 1) * 100, base_fee: 450, per_additional_pack_fee: 100, total_packs: totalPacks, additional_packs_fee: Math.max(0, totalPacks - 1) * 100 };
+    return null;
+  }
+}
+
+async function fetchDeliveryZones() {
+  try {
+    const r = await api.get('/delivery/zones');
+    return r.data.data || [];
+  } catch {
+    return [];
   }
 }
 
@@ -43,6 +52,12 @@ export default function Checkout() {
   const [promoFreeDelivery, setPromoFreeDelivery] = useState(false);
   const [couponOpen, setCouponOpen] = useState(false);
 
+  const [zones, setZones] = useState([]);
+  const [selectedZoneId, setSelectedZoneId] = useState('');
+  const [zoneSearch, setZoneSearch] = useState('');
+  const [zoneDropdownOpen, setZoneDropdownOpen] = useState(false);
+  const zoneRef = useRef(null);
+
   const [form, setForm] = useState({
     full_name: '', phone: '', email: '',
     fulfillment_type: 'delivery',
@@ -54,16 +69,31 @@ export default function Checkout() {
     if (items.length === 0) navigate('/shop');
   }, [items, navigate]);
 
+  useEffect(() => {
+    fetchDeliveryZones().then(setZones);
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (zoneRef.current && !zoneRef.current.contains(e.target)) setZoneDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedZone = zones.find(z => z.id === Number(selectedZoneId));
+  const filteredZones = zones.filter(z => z.zone_name.toLowerCase().includes(zoneSearch.toLowerCase()));
+
   const totalPacks = items.reduce((s, i) => s + i.qty, 0);
   const [deliveryBreakdown, setDeliveryBreakdown] = useState(null);
 
   useEffect(() => {
-    if (form.fulfillment_type !== 'delivery' || totalPacks <= 0) {
+    if (form.fulfillment_type !== 'delivery' || totalPacks <= 0 || !selectedZoneId) {
       setDeliveryBreakdown(null);
       return;
     }
-    fetchDeliveryFee(totalPacks).then(setDeliveryBreakdown);
-  }, [totalPacks, form.fulfillment_type]);
+    fetchDeliveryFee(totalPacks, selectedZoneId).then(setDeliveryBreakdown);
+  }, [totalPacks, form.fulfillment_type, selectedZoneId]);
 
   const rawDeliveryFee = form.fulfillment_type === 'delivery' ? (deliveryBreakdown?.total_fee || 0) : 0;
   const deliveryFee = promoFreeDelivery ? 0 : rawDeliveryFee;
@@ -141,7 +171,7 @@ export default function Checkout() {
   const canProceed = () => {
     if (step === 0) return form.full_name.trim() && form.phone.trim() && form.phone.length >= 9;
     if (step === 1) {
-      if (form.fulfillment_type === 'delivery') return form.delivery_address.trim();
+      if (form.fulfillment_type === 'delivery') return form.delivery_address.trim() && selectedZoneId;
       return true;
     }
     return true;
@@ -157,7 +187,10 @@ export default function Checkout() {
       if (form.email.trim()) formData.append('email', form.email.trim());
       formData.append('items', JSON.stringify(items.map(i => ({ variantId: i.variantId, qty: i.qty, price: i.price }))));
       formData.append('fulfillment_type', form.fulfillment_type);
-      if (form.fulfillment_type === 'delivery') formData.append('delivery_address', form.delivery_address.trim());
+      if (form.fulfillment_type === 'delivery') {
+        formData.append('delivery_address', form.delivery_address.trim());
+        if (selectedZoneId) formData.append('delivery_zone_id', selectedZoneId);
+      }
       formData.append('delivery_fee', deliveryFee);
       formData.append('discount_total', totalDiscount);
       if (couponApplied) formData.append('coupon_code', couponApplied);
@@ -245,22 +278,78 @@ export default function Checkout() {
 
                 {form.fulfillment_type === 'delivery' && (
                   <div className="mt-6 space-y-4">
-                    <div className="rounded-xl bg-primary-50 p-4">
-                      <p className="text-sm font-medium text-primary-800">Delivery Fee Breakdown</p>
-                      {deliveryBreakdown ? (
-                        <>
-                          <p className="mt-1 text-xs text-primary-600">
-                            Base {formatPrice(deliveryBreakdown.base_fee)} (1st pack)
-                            {totalPacks > 1 && ` + ${totalPacks - 1} × ${formatPrice(deliveryBreakdown.per_additional_pack_fee)}`}
-                          </p>
-                          <p className="mt-2 text-sm font-bold text-primary-900">
-                            {totalPacks} {totalPacks === 1 ? 'pack' : 'packs'} = {formatPrice(deliveryBreakdown.total_fee)}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="mt-1 text-xs text-primary-600">Calculating...</p>
+                    {/* Zone selector */}
+                    <div ref={zoneRef} className="relative">
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Select Your Area / District *</label>
+                      <button
+                        type="button"
+                        onClick={() => setZoneDropdownOpen(!zoneDropdownOpen)}
+                        className={`flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                          selectedZone ? 'border-primary-500 bg-primary-50' : 'border-slate-200 bg-white hover:border-primary-300'
+                        }`}
+                      >
+                        <MapPin className={`h-4 w-4 shrink-0 ${selectedZone ? 'text-primary-500' : 'text-slate-400'}`} />
+                        <span className={`flex-1 text-sm ${selectedZone ? 'font-medium text-primary-700' : 'text-slate-400'}`}>
+                          {selectedZone ? selectedZone.zone_name : 'Choose your delivery area...'}
+                        </span>
+                        <ChevronLeft className={`h-4 w-4 text-slate-400 transition-transform ${zoneDropdownOpen ? 'rotate-90' : '-rotate-90'}`} />
+                      </button>
+                      {zoneDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                          <div className="border-b border-slate-100 p-2">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="text"
+                                value={zoneSearch}
+                                onChange={e => setZoneSearch(e.target.value)}
+                                placeholder="Search area..."
+                                autoFocus
+                                className="w-full rounded-lg bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-primary-300"
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto">
+                            {filteredZones.length === 0 ? (
+                              <p className="px-4 py-3 text-sm text-slate-400">No areas found</p>
+                            ) : filteredZones.map(z => (
+                              <button
+                                key={z.id}
+                                type="button"
+                                onClick={() => { setSelectedZoneId(String(z.id)); setZoneDropdownOpen(false); setZoneSearch(''); }}
+                                className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-primary-50 ${
+                                  Number(selectedZoneId) === z.id ? 'bg-primary-50 font-medium text-primary-700' : 'text-slate-700'
+                                }`}
+                              >
+                                <span>{z.zone_name}</span>
+                                <span className="text-xs text-slate-400">{formatPrice(z.base_fee)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
+
+                    {/* Fee breakdown */}
+                    {selectedZone && (
+                      <div className="rounded-xl bg-primary-50 p-4">
+                        <p className="text-sm font-medium text-primary-800">Delivery to: {selectedZone.zone_name}</p>
+                        {deliveryBreakdown ? (
+                          <>
+                            <p className="mt-1 text-xs text-primary-600">
+                              Base {formatPrice(deliveryBreakdown.base_fee)} (1st pack)
+                              {totalPacks > 1 && ` + ${totalPacks - 1} × ${formatPrice(deliveryBreakdown.per_additional_pack_fee)}`}
+                            </p>
+                            <p className="mt-2 text-sm font-bold text-primary-900">
+                              {totalPacks} {totalPacks === 1 ? 'pack' : 'packs'} = {formatPrice(deliveryBreakdown.total_fee)}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-1 text-xs text-primary-600">Calculating...</p>
+                        )}
+                      </div>
+                    )}
+
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-slate-700">Delivery Address *</label>
                       <textarea
@@ -493,7 +582,7 @@ export default function Checkout() {
 
                 {form.fulfillment_type === 'delivery' && (
                   <div>
-                    <SummaryRow label="Delivery Fee" value={promoFreeDelivery ? 'Free 🚚' : formatPrice(deliveryFee)} />
+                    <SummaryRow label={selectedZone ? `Delivery (${selectedZone.zone_name})` : 'Delivery Fee'} value={promoFreeDelivery ? 'Free 🚚' : (deliveryBreakdown ? formatPrice(deliveryFee) : '—')} />
                     {!promoFreeDelivery && deliveryBreakdown && totalPacks > 1 && (
                       <p className="mt-0.5 text-right text-[10px] text-slate-400">
                         {formatPrice(deliveryBreakdown.base_fee)} + {totalPacks - 1} × {formatPrice(deliveryBreakdown.per_additional_pack_fee)}

@@ -83,7 +83,12 @@ exports.checkout = async (req, res, next) => {
     const totalPacks = items.reduce((s, i) => s + (i.qty || 1), 0);
     let calculatedDeliveryFee = 0;
     if (fulfillment_type === 'delivery') {
-      const feeResult = await deliveryModel.calculateSelfDeliveryFee({ total_packs: totalPacks });
+      let feeResult;
+      if (delivery_zone_id) {
+        feeResult = await deliveryModel.calculateFee({ zone_id: Number(delivery_zone_id), total_weight_grams: 0, total_packs: totalPacks });
+      } else {
+        feeResult = await deliveryModel.calculateSelfDeliveryFee({ total_packs: totalPacks });
+      }
       calculatedDeliveryFee = feeResult.total_fee;
     }
 
@@ -160,8 +165,14 @@ exports.getDeliveryZones = async (req, res, next) => {
 
 exports.calculateDeliveryFee = async (req, res, next) => {
   try {
-    const { total_packs } = req.query;
-    const result = await deliveryModel.calculateSelfDeliveryFee({ total_packs: Number(total_packs) || 1 });
+    const { total_packs, zone_id } = req.query;
+    const packs = Number(total_packs) || 1;
+    let result;
+    if (zone_id) {
+      result = await deliveryModel.calculateFee({ zone_id: Number(zone_id), total_weight_grams: 0, total_packs: packs });
+    } else {
+      result = await deliveryModel.calculateSelfDeliveryFee({ total_packs: packs });
+    }
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 };

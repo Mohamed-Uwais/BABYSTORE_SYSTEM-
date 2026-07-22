@@ -1162,8 +1162,8 @@ export default function Billing() {
                         ))}
                       </div>
 
-                      {/* Zone selector for courier deliveries */}
-                      {deliveryMethod !== 'self_delivery' && zones.length > 0 && (
+                      {/* Zone selector for all delivery methods */}
+                      {zones.length > 0 && (
                         <select value={selectedZone} onChange={e => handleZoneChange(e.target.value)} className={ic}>
                           <option value="">Select delivery zone...</option>
                           {zones.map(z => <option key={z.id} value={z.id}>{z.zone_name} ({money(z.base_fee)})</option>)}
