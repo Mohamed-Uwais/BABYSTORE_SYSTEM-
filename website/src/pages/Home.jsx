@@ -315,11 +315,11 @@ function PromoCarousel({ banners }) {
   );
 }
 
-/* ═══ Category Emojis & Gradients ═══ */
+/* ═══ Category Fallback Gradients ═══ */
 const CAT_STYLES = [
-  { emoji: '🧷', gradient: 'from-sky-500 to-indigo-600', enterDir: -60 },
-  { emoji: '🧻', gradient: 'from-emerald-400 to-emerald-600', enterDir: 0 },
-  { emoji: '✨', gradient: 'from-pink-400 to-rose-500', enterDir: 60 },
+  { gradient: 'from-sky-500 to-indigo-600', enterDir: -60 },
+  { gradient: 'from-emerald-400 to-emerald-600', enterDir: 0 },
+  { gradient: 'from-pink-400 to-rose-500', enterDir: 60 },
 ];
 
 /* ═══ Why Littora Section ═══ */
@@ -481,20 +481,22 @@ export default function Home() {
                     to={`/shop?category=${encodeURIComponent(cat.name)}`}
                     className="group relative block min-h-[300px] overflow-hidden rounded-3xl transition-transform duration-300 hover:scale-[1.03]"
                   >
-                    <div className={`absolute inset-0 bg-gradient-to-br ${style.gradient} transition-all duration-500 group-hover:scale-110`} />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
-                    <div className={`absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 shadow-[inset_0_0_60px_rgba(255,255,255,0.15)]`} />
-                    <div className="relative z-10 flex h-full min-h-[300px] flex-col justify-between p-8">
-                      <motion.span className="text-6xl drop-shadow-lg" whileHover={{ scale: 1.2, rotate: 10 }}>
-                        {style.emoji}
-                      </motion.span>
-                      <div>
-                        <h3 className="text-2xl font-bold text-white sm:text-3xl">{cat.name}</h3>
-                        <p className="mt-1 text-sm text-white/80 leading-relaxed">{cat.desc}</p>
-                        <p className="mt-2 text-xs font-medium text-white/60">{cat.brands}</p>
-                        <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition-all group-hover:bg-white/30 group-hover:gap-3">
-                          Shop Now <ArrowRight className="h-4 w-4" />
-                        </div>
+                    {cat.image ? (
+                      <img
+                        src={cat.image}
+                        alt={cat.name}
+                        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className={`absolute inset-0 bg-gradient-to-br ${style.gradient} transition-all duration-500 group-hover:scale-110`} />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10 transition-opacity duration-300 group-hover:from-black/80 group-hover:via-black/40" />
+                    <div className="relative z-10 flex h-full min-h-[300px] flex-col justify-end p-8">
+                      <h3 className="text-2xl font-bold text-white sm:text-3xl drop-shadow-lg">{cat.name}</h3>
+                      <p className="mt-1 text-sm text-white/90 leading-relaxed drop-shadow">{cat.desc}</p>
+                      <p className="mt-2 text-xs font-medium text-white/70">{cat.brands}</p>
+                      <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition-all group-hover:bg-white/30 group-hover:gap-3">
+                        Shop Now <ArrowRight className="h-4 w-4" />
                       </div>
                     </div>
                   </Link>

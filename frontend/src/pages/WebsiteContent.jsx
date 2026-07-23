@@ -255,10 +255,19 @@ export default function WebsiteContent() {
           {/* Categories */}
           <SectionCard title="Category Cards" icon="📁">
             {(c.categories?.items || []).map((cat, i) => (
-              <div key={i} className="mb-3 rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
-                <Field label={`Category ${i + 1} name`} value={cat.name} onChange={v => updateArrayItem('categories', 'items', i, 'name', v)} />
+              <div key={i} className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500">Category {i + 1}</span>
+                </div>
+                <Field label="Name" value={cat.name} onChange={v => updateArrayItem('categories', 'items', i, 'name', v)} />
                 <Field label="Description" value={cat.desc} onChange={v => updateArrayItem('categories', 'items', i, 'desc', v)} />
                 <Field label="Brands" value={cat.brands} onChange={v => updateArrayItem('categories', 'items', i, 'brands', v)} />
+                <Field label="Image URL" value={cat.image || ''} onChange={v => updateArrayItem('categories', 'items', i, 'image', v)} placeholder="https://... or /uploads/..." />
+                {cat.image && (
+                  <div className="mt-1 mb-2">
+                    <img src={cat.image} alt={cat.name} className="h-20 w-32 rounded-lg object-cover border border-slate-200" />
+                  </div>
+                )}
               </div>
             ))}
             <button onClick={() => saveSection('categories')} disabled={saving.categories} className={btnCls}>
