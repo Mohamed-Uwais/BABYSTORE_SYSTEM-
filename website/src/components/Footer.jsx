@@ -26,11 +26,9 @@ export default function Footer() {
           <div>
             <div className="mb-5 flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-teal-500 text-sm font-bold text-white">
-                LD
+                L
               </div>
-              <span className="text-lg font-bold text-white">
-                Littora <span className="text-primary-400">Diapers</span>
-              </span>
+              <span className="text-lg font-bold text-white">LITTORA</span>
             </div>
             <p className="text-sm leading-relaxed text-slate-400">
               Sri Lanka's best place to buy diapers and wet wipes.

@@ -6,8 +6,15 @@ import api from '../api/client';
 import PageHero from '../components/PageHero';
 import SEO from '../components/SEO';
 
+const COVER_IMAGES = {
+  'choosing-right-diaper-size': '/images/blog/diaper-size-guide.svg',
+  'caring-for-a-newborn-who-tips': '/images/blog/newborn-care-who.svg',
+  'working-around-babys-nap-schedule': '/images/blog/baby-nap-schedule.svg',
+  'the-science-behind-diapers': '/images/blog/science-behind-diapers.svg',
+};
+
 const placeholder = 'data:image/svg+xml,' + encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect fill="#fdf2f8" width="600" height="400"/><text x="300" y="200" text-anchor="middle" font-family="system-ui" font-size="18" fill="#f9a8d4">Blog Cover</text></svg>`
+  `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect fill="#f0f9ff" width="600" height="400"/><text x="300" y="200" text-anchor="middle" font-family="system-ui" font-size="18" fill="#94a3b8">LITTORA</text></svg>`
 );
 
 export default function Blog() {
@@ -54,7 +61,7 @@ export default function Blog() {
                 >
                   <div className="aspect-video overflow-hidden bg-slate-50">
                     <img
-                      src={post.cover_image || placeholder}
+                      src={post.cover_image || COVER_IMAGES[post.slug] || placeholder}
                       alt={post.title}
                       loading="lazy"
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"

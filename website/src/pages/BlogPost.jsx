@@ -5,6 +5,13 @@ import { ChevronLeft, Clock, Loader2 } from 'lucide-react';
 import api from '../api/client';
 import SEO from '../components/SEO';
 
+const COVER_IMAGES = {
+  'choosing-right-diaper-size': '/images/blog/diaper-size-guide.svg',
+  'caring-for-a-newborn-who-tips': '/images/blog/newborn-care-who.svg',
+  'working-around-babys-nap-schedule': '/images/blog/baby-nap-schedule.svg',
+  'the-science-behind-diapers': '/images/blog/science-behind-diapers.svg',
+};
+
 export default function BlogPost() {
   const { slug } = useParams();
   const [post, setPost] = useState(null);
@@ -44,7 +51,7 @@ export default function BlogPost() {
         path={`/blog/${post.slug}`}
         description={post.meta_description || post.excerpt}
         type="article"
-        image={post.cover_image}
+        image={post.cover_image || COVER_IMAGES[post.slug]}
       />
       <div className="border-b border-slate-100 bg-white">
         <div className="mx-auto max-w-3xl px-4 py-4">
@@ -55,9 +62,9 @@ export default function BlogPost() {
       </div>
 
       <article className="mx-auto max-w-3xl px-4 py-8 lg:py-12">
-        {post.cover_image && (
+        {(post.cover_image || COVER_IMAGES[post.slug]) && (
           <img
-            src={post.cover_image}
+            src={post.cover_image || COVER_IMAGES[post.slug]}
             alt={post.title}
             className="mb-8 aspect-video w-full rounded-2xl object-cover shadow-sm"
           />

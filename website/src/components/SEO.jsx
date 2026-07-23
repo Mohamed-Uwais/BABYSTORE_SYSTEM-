@@ -1,6 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 
-const SITE_NAME = 'Littora';
+const SITE_NAME = 'LITTORA';
 const BASE_URL = 'https://littoradiapers.com';
 
 export default function SEO({ title, description, path = '', type = 'website', image }) {

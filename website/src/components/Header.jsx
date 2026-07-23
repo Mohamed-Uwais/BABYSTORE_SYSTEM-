@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ShoppingBag, Search, Menu, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import api from '../api/client';
 
 const NAV_LINKS = [
   { to: '/', label: 'Home' },
@@ -18,6 +19,13 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [logoUrl, setLogoUrl] = useState(null);
+
+  useEffect(() => {
+    api.get('/store-info').then(r => {
+      if (r.data.data?.logo_url) setLogoUrl(r.data.data.logo_url);
+    }).catch(() => {});
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
@@ -54,12 +62,14 @@ export default function Header() {
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 lg:px-8">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 text-sm font-bold text-white shadow-sm">
-              LD
-            </div>
-            <span className="text-lg font-bold text-slate-900">
-              Littora <span className="text-primary-500">Diapers</span>
-            </span>
+            {logoUrl ? (
+              <img src={logoUrl} alt="LITTORA" className="h-9 w-9 rounded-xl object-contain" />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 text-sm font-bold text-white shadow-sm">
+                L
+              </div>
+            )}
+            <span className="text-lg font-bold text-slate-900">LITTORA</span>
           </Link>
 
           <nav className="hidden items-center gap-8 lg:flex">

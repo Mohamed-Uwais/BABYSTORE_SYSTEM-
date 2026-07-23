@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d9488"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.15"/>
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.05"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="950" cy="150" r="200" fill="url(#accent)"/>
+  <circle cx="200" cy="500" r="150" fill="url(#accent)"/>
+  <circle cx="1100" cy="550" r="100" fill="url(#accent)"/>
+  <!-- Ruler/measuring icon -->
+  <g transform="translate(540,140)" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.9">
+    <rect x="0" y="0" width="120" height="120" rx="20" fill="white" fill-opacity="0.15" stroke="none"/>
+    <path d="M35 30 L35 90 M35 30 L85 30" stroke-width="4"/>
+    <path d="M45 30 L45 38 M55 30 L55 45 M65 30 L65 38 M75 30 L75 45"/>
+    <path d="M35 40 L43 40 M35 50 L50 50 M35 60 L43 60 M35 70 L50 70 M35 80 L43 80"/>
+    <circle cx="70" cy="65" r="18" stroke-width="2.5" fill="white" fill-opacity="0.1"/>
+    <text x="70" y="71" text-anchor="middle" fill="white" font-family="system-ui" font-size="16" font-weight="bold" stroke="none">S</text>
+  </g>
+  <text x="600" y="340" text-anchor="middle" fill="white" font-family="system-ui, sans-serif" font-size="44" font-weight="bold" opacity="0.95">How to Choose the Right</text>
+  <text x="600" y="395" text-anchor="middle" fill="white" font-family="system-ui, sans-serif" font-size="44" font-weight="bold" opacity="0.95">Baby Diaper Size</text>
+  <rect x="560" y="420" width="80" height="4" rx="2" fill="white" opacity="0.5"/>
+  <text x="600" y="470" text-anchor="middle" fill="white" font-family="system-ui, sans-serif" font-size="20" opacity="0.8">Size chart · Fit checklist · When to size up</text>
+  <text x="600" y="570" text-anchor="middle" fill="white" font-family="system-ui, sans-serif" font-size="16" font-weight="600" letter-spacing="3" opacity="0.6">LITTORA</text>
+</svg>
