@@ -241,7 +241,7 @@ async function getAllOrders({ channel, status, limit = 50 } = {}) {
 // Best-sellers for the POS billing screen quick-select tiles: last 7 days
 async function getBestSellers(limit = 12) {
   const [rows] = await db.query(`
-    SELECT pv.id AS variant_id, pv.sku, pv.variant_label, pv.retail_price, pv.current_stock,
+    SELECT pv.id AS variant_id, pv.sku, pv.barcode, pv.variant_label, pv.retail_price, pv.wholesale_price, pv.current_stock,
            p.name AS product_name, pv.image_url, SUM(oi.quantity) AS units_sold
     FROM order_items oi
     JOIN product_variants pv ON pv.id = oi.variant_id

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import axios from 'axios';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -13,6 +14,14 @@ export default function Login() {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const [logoUrl, setLogoUrl] = useState(null);
+
+  useEffect(() => {
+    axios.get('/api/public/store-info').then(r => {
+      const url = r.data.data?.logo_url;
+      if (url) setLogoUrl(url);
+    }).catch(() => {});
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -66,11 +75,11 @@ export default function Login() {
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1, type: 'spring', stiffness: 300, damping: 20 }}
-            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-xl font-bold text-white shadow-lg shadow-brand-500/25"
+            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-xl font-bold text-white shadow-lg shadow-brand-500/25 overflow-hidden"
           >
-            BS
+            {logoUrl ? <img src={logoUrl} alt="" className="h-full w-full object-contain p-1" /> : 'L'}
           </motion.div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">LITTORA POS</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">LITTORA</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Sign in to start your shift</p>
         </div>
 

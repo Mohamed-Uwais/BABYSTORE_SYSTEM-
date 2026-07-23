@@ -4,7 +4,7 @@ import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 
 function money(n, symbol = 'Rs.') {
-  return `${symbol} ${Number(n || 0).toFixed(2)}`;
+  return `${symbol}${Number(n || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function fmtDate(iso) {
@@ -229,10 +229,10 @@ export default function Receipt({ orderId, onClose }) {
 
             {/* Column headers */}
             <div className="flex justify-between font-medium">
-              <span className="w-2/5">Item</span>
-              <span className="w-1/5 text-center">Qty</span>
-              <span className="w-1/5 text-right">Price</span>
-              <span className="w-1/5 text-right">Total</span>
+              <span className="w-1/4">Item</span>
+              <span className="w-1/6 text-center">Qty</span>
+              <span className="w-[30%] text-right">Price</span>
+              <span className="w-[30%] text-right">Total</span>
             </div>
 
             <div className="my-1 border-t border-dotted border-slate-300" />
@@ -241,12 +241,11 @@ export default function Receipt({ orderId, onClose }) {
             {order.items.map((item, i) => (
               <div key={i}>
                 <p className="font-medium">{item.product_name}</p>
-                {item.variant_label && <p className="text-slate-500">{item.variant_label} · {item.sku}</p>}
                 <div className="flex justify-between">
-                  <span className="w-2/5" />
-                  <span className="w-1/5 text-center">{item.quantity}</span>
-                  <span className="w-1/5 text-right">{Number(item.unit_price).toFixed(2)}</span>
-                  <span className="w-1/5 text-right">{Number(item.line_total).toFixed(2)}</span>
+                  <span className="w-1/4" />
+                  <span className="w-1/6 text-center">{item.quantity}</span>
+                  <span className="w-[30%] text-right">{money(item.unit_price, cur)}</span>
+                  <span className="w-[30%] text-right">{money(item.line_total, cur)}</span>
                 </div>
               </div>
             ))}
@@ -355,8 +354,9 @@ const printCSS = `
   .border-dashed { border-style: dashed; }
   .flex { display: flex; }
   .justify-between { justify-content: space-between; }
-  .w-2\\/5 { width: 40%; }
-  .w-1\\/5 { width: 20%; }
+  .w-1\\/4 { width: 25%; }
+  .w-1\\/6 { width: 16.6667%; }
+  .w-\\[30\\%\\] { width: 30%; }
   .mx-auto { margin-left: auto; margin-right: auto; }
   p { margin: 0; }
   .receipt-logo img {
