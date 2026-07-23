@@ -268,7 +268,7 @@ async function trackOrder(orderNumber, phone) {
     FROM orders o
     LEFT JOIN customers c ON c.id = o.customer_id
     WHERE o.order_number = ?
-      AND (c.phone = ? OR (o.customer_id IS NULL AND ? = ''))
+      AND (? = '' OR c.phone = ?)
   `, [orderNumber, phone, phone]);
   if (!order) return null;
 
