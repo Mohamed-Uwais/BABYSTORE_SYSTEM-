@@ -66,7 +66,7 @@ async function processMessage({ message, channel, senderInfo }) {
   await conversationManager.logRouting(conversation.id, message, aiResult.provider, null, elapsed);
   await conversationManager.updateLastMessage(conversation.id);
 
-  return { text: aiResult.text, images: [], provider: aiResult.provider, conversationId: conversation.id };
+  return { text: aiResult.text, images: aiResult.images || [], provider: aiResult.provider, conversationId: conversation.id };
 }
 
 module.exports = { processMessage };

@@ -39,6 +39,7 @@ async function call(conversationHistory, customerContext) {
 
   let iterations = 0;
   const MAX_TOOL_ITERATIONS = 5;
+  const collectedImages = [];
 
   while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
     iterations++;
@@ -48,6 +49,13 @@ async function call(conversationHistory, customerContext) {
     const toolResults = [];
     for (const block of toolBlocks) {
       const result = await toolExecutor.execute(block.name, block.input);
+      if (block.name === 'search_products' && result.products) {
+        for (const p of result.products) {
+          if (p.image_url && collectedImages.length < 3) {
+            collectedImages.push({ url: p.image_url, caption: `${p.name} — Rs. ${Number(p.discounted_price || p.price).toLocaleString()}` });
+          }
+        }
+      }
       toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
     }
 
@@ -66,7 +74,7 @@ async function call(conversationHistory, customerContext) {
   const textBlocks = response.content.filter(b => b.type === 'text');
   const text = textBlocks.map(b => b.text).join('\n');
   if (!text) throw new Error('Empty response from Claude');
-  return text;
+  return { text, images: collectedImages };
 }
 
 module.exports = { call };

@@ -33,6 +33,7 @@ app.post('/api/simulate', async (req, res) => {
 
     res.json({
       reply: result?.text || '(no response)',
+      images: (result?.images || []).map(img => typeof img === 'string' ? img : img.url).filter(Boolean),
       provider: result?.provider || 'none',
       responseTime: Date.now() - startTime,
       conversationId: result?.conversationId,

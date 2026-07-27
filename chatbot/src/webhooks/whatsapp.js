@@ -47,7 +47,11 @@ router.post('/', async (req, res) => {
           if (result && result.text) {
             await whatsappSender.sendText(phone, result.text);
             if (result.images && result.images.length > 0) {
-              await whatsappSender.sendImage(phone, result.images[0], '');
+              for (const img of result.images.slice(0, 3)) {
+                const url = typeof img === 'string' ? img : img.url;
+                const caption = typeof img === 'string' ? '' : (img.caption || '');
+                if (url) await whatsappSender.sendImage(phone, url, caption);
+              }
             }
           }
         }

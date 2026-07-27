@@ -1,0 +1,2670 @@
+{
+  "blog_posts": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "title",
+      "COLUMN_TYPE": "varchar(200)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "slug",
+      "COLUMN_TYPE": "varchar(220)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "cover_image_url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "content",
+      "COLUMN_TYPE": "longtext",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "excerpt",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "meta_description",
+      "COLUMN_TYPE": "varchar(300)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_published",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "published_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "brands": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "slug",
+      "COLUMN_TYPE": "varchar(120)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "logo_url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "categories": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "slug",
+      "COLUMN_TYPE": "varchar(120)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "parent_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "image_url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "chatbot_conversations": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "customer_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "channel",
+      "COLUMN_TYPE": "enum('whatsapp','instagram','messenger','simulator','web')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "channel_user_id",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "enum('active','ghost_pending','closed')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "active",
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "owner_takeover",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "ghost_nudge_count",
+      "COLUMN_TYPE": "tinyint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "last_message_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "ghost_nudge_sent_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "confusion_count",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "chatbot_messages": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "conversation_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "sender",
+      "COLUMN_TYPE": "enum('customer','bot','owner')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "message_text",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "message_type",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "text",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "handled_by",
+      "COLUMN_TYPE": "enum('pattern_matcher','gemini','claude','fallback','owner')",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "intent",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "response_time_ms",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "image_url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "contact_messages": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "phone",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "email",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "message",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_read",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "couriers": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(30)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "has_api",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "tracking_url_template",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "customer_ledger": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "customer_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "entry_type",
+      "COLUMN_TYPE": "enum('points_earned','points_redeemed','credit_issued','credit_repaid')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "points_delta",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "credit_delta",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reference_type",
+      "COLUMN_TYPE": "varchar(30)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reference_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "notes",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "customers": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "phone",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "full_name",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "email",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "address",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "city",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "customer_type",
+      "COLUMN_TYPE": "enum('walk_in','loyalty')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "walk_in",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "loyalty_tier",
+      "COLUMN_TYPE": "enum('none','silver','gold','platinum')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "none",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "loyalty_points_balance",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "credit_balance",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "credit_limit",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "source_channel",
+      "COLUMN_TYPE": "enum('pos','whatsapp','instagram','messenger','website')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "pos",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "delivery_weight_tiers": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "min_weight_grams",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "max_weight_grams",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "surcharge",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "delivery_zones": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "zone_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "base_fee",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "per_additional_pack_fee",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "100.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "message_routing_log": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "conversation_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "message_text",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "handled_by",
+      "COLUMN_TYPE": "enum('pattern_matcher','gemini','claude','fallback')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "intent",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "response_time_ms",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "order_deliveries": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "courier_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "tracking_number",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "receiver_name",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "receiver_phone",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "receiver_address",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "last_status",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "last_status_checked_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "label_printed",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "order_items": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "variant_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "quantity",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "unit_price",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "discount_amount",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "line_total",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "cost_price_snapshot",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "order_payments": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "payment_method",
+      "COLUMN_TYPE": "enum('cash','card','bank_transfer','store_credit','online_gateway')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "amount",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reference_note",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "paid_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "order_returns": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "order_item_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "quantity",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reason",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "refund_amount",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "restock",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "processed_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "order_status_history": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "changed_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "notes",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "orders": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "order_number",
+      "COLUMN_TYPE": "varchar(30)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "channel",
+      "COLUMN_TYPE": "enum('pos','whatsapp','instagram','messenger','website')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "customer_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "cashier_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "enum('pending','confirmed','processing','out_for_delivery','completed','cancelled','refunded','partially_refunded')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "pending",
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "subtotal",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "discount_total",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "delivery_fee",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "grand_total",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "fulfillment_type",
+      "COLUMN_TYPE": "enum('pickup','self_delivery','courier_delivery')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "pickup",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "delivery_address",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "delivery_zone_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "notes",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "payment_slip_url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "product_images": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "product_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "variant_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "image_url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "sort_order",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_primary",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "product_tags": [
+    {
+      "COLUMN_NAME": "product_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "tag_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "PRI"
+    }
+  ],
+  "product_variants": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "product_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "sku",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "barcode",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "variant_label",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "image_url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "cost_price",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "wholesale_price",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "retail_price",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "mrp",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "discount_type",
+      "COLUMN_TYPE": "enum('none','percent','amount')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "none",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "discount_value",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "current_stock",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "low_stock_threshold",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reorder_suggestion_qty",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "weight_grams",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "products": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "category_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "brand_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(200)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "slug",
+      "COLUMN_TYPE": "varchar(220)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "description",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "low_stock_threshold",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "5",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "show_on_website",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "promotion_bundle_items": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "promotion_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "variant_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "quantity",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "promotion_targets": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "promotion_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "target_type",
+      "COLUMN_TYPE": "enum('product','variant','category','brand','all')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "target_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "promotion_usage": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "promotion_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "customer_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "discount_applied",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "used_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "promotions": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "title",
+      "COLUMN_TYPE": "varchar(200)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "description",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "promo_type",
+      "COLUMN_TYPE": "enum('percentage_discount','fixed_discount','buy_x_get_y','bundle_deal','coupon_code','free_delivery')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "coupon_code",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "max_uses",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "times_used",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "discount_value",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "buy_quantity",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "get_quantity",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "bundle_price",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "min_order_amount",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "starts_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "ends_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "banner_text",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "banner_color",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "show_on_homepage",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "purchase_order_items": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "purchase_order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "variant_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "quantity",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "unit_cost_price",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "transport_share",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "landed_unit_cost",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "purchase_orders": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "po_number",
+      "COLUMN_TYPE": "varchar(30)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "supplier_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "enum('placed','paid','shipped','received','cancelled')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "placed",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "transport_charge",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "paid_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "shipped_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "received_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "quotations": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "quotation_number",
+      "COLUMN_TYPE": "varchar(30)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "customer_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "pricing_mode",
+      "COLUMN_TYPE": "enum('retail','wholesale')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "retail",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "items",
+      "COLUMN_TYPE": "json",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "subtotal",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "delivery_fee",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "discount_total",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0.00",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "grand_total",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "notes",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "valid_until",
+      "COLUMN_TYPE": "date",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "enum('draft','sent','accepted','expired')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "draft",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "stock_batches": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "variant_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "purchase_order_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "batch_code",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "quantity_received",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "quantity_remaining",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "unit_cost",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "received_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "stock_movements": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "variant_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "change_qty",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reason",
+      "COLUMN_TYPE": "enum('purchase_received','sale','refund','manual_adjustment','stock_toggle')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reference_type",
+      "COLUMN_TYPE": "varchar(30)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "reference_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "store_settings": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "store_name",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "BabyStore",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "address_line1",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "address_line2",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "city",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "phone",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "email",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "tax_id",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "currency_symbol",
+      "COLUMN_TYPE": "varchar(10)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "Rs.",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "receipt_footer",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "logo_url",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "suppliers": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "contact_person",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "phone",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "email",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "address",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "notes",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "tags": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "slug",
+      "COLUMN_TYPE": "varchar(60)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    }
+  ],
+  "user_permissions": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "user_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "permission",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "users": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "full_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "username",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "password_hash",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "role",
+      "COLUMN_TYPE": "enum('owner','cashier')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "cashier",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "phone",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "is_active",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1",
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "variant_price_tiers": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "variant_id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "COLUMN_NAME": "min_quantity",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "tier_price",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "label",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "website_content": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int unsigned",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "auto_increment",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "COLUMN_NAME": "section_key",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "COLUMN_NAME": "content",
+      "COLUMN_TYPE": "json",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": null,
+      "EXTRA": "",
+      "COLUMN_KEY": ""
+    },
+    {
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP",
+      "EXTRA": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "COLUMN_KEY": ""
+    }
+  ]
+}

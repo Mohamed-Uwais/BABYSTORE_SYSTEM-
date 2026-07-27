@@ -7,7 +7,7 @@ async function callAI(conversationHistory, customerContext) {
   try {
     const response = await geminiService.call(conversationHistory, customerContext);
     logger.info('AI response from: Gemini');
-    return { text: response, provider: 'gemini' };
+    return { text: response.text, images: response.images || [], provider: 'gemini' };
   } catch (error) {
     logger.warn('Gemini failed, falling back to Claude:', error.message);
   }
@@ -16,11 +16,12 @@ async function callAI(conversationHistory, customerContext) {
   try {
     const response = await claudeService.call(conversationHistory, customerContext);
     logger.info('AI response from: Claude (fallback)');
-    return { text: response, provider: 'claude' };
+    return { text: response.text, images: response.images || [], provider: 'claude' };
   } catch (error) {
     logger.error('All AI providers failed:', error.message);
     return {
       text: "Sorry, I'm having a little trouble right now! 😅 Please try again in a moment, or message us on WhatsApp and we'll help you directly.",
+      images: [],
       provider: 'fallback',
     };
   }

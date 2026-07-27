@@ -2,6 +2,7 @@ import Header from './Header';
 import Footer from './Footer';
 import CartDrawer from './CartDrawer';
 import WhatsAppButton from './WhatsAppButton';
+import ChatWidget from './ChatWidget';
 import CookieConsent from './CookieConsent';
 import PromoBanner from './PromoBanner';
 
@@ -14,6 +15,7 @@ export default function Layout({ children }) {
       <Footer />
       <CartDrawer />
       <WhatsAppButton />
+      <ChatWidget />
       <CookieConsent />
     </div>
   );

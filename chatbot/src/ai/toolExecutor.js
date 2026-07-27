@@ -21,6 +21,14 @@ async function execute(toolName, args) {
   }
 }
 
+const PUBLIC_BASE = process.env.PUBLIC_URL || 'https://pos.littora.lk';
+
+function toPublicUrl(imageUrl) {
+  if (!imageUrl) return null;
+  if (imageUrl.startsWith('http')) return imageUrl;
+  return PUBLIC_BASE + (imageUrl.startsWith('/') ? '' : '/') + imageUrl;
+}
+
 async function searchProducts({ query }) {
   const term = `%${query}%`;
   const [rows] = await db.query(
@@ -56,6 +64,7 @@ async function searchProducts({ query }) {
       variant_id: r.variant_id,
       name: r.product_name,
       variant: r.variant_label,
+      slug: r.slug,
       price: r.retail_price,
       discounted_price: templates.calcDiscounted(r),
       has_discount: r.discount_type && r.discount_type !== 'none' && r.discount_value > 0,
@@ -63,7 +72,8 @@ async function searchProducts({ query }) {
       stock_qty: r.current_stock,
       category: r.category,
       brand: r.brand,
-      image: r.image_url,
+      image_url: toPublicUrl(r.image_url),
+      website_link: r.slug ? `https://littora.lk/product/${r.slug}` : null,
       price_tiers: tierMap[r.variant_id] || [],
     })),
     count: rows.length,

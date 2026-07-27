@@ -27,4 +27,28 @@ router.post('/promotions/calculate', promoCtrl.calculateCart);
 
 router.get('/content', contentCtrl.publicGetAll);
 
+// ── Website live chat with Liya ──
+const axios = require('axios');
+const CHATBOT_URL = process.env.CHATBOT_URL || 'http://localhost:5002';
+
+router.post('/chat', async (req, res) => {
+  try {
+    const { message, session_id } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ error: 'message is required' });
+
+    const resp = await axios.post(`${CHATBOT_URL}/api/simulate`, {
+      message: message.trim(),
+      phone: session_id || `web_${Date.now()}`,
+    }, { timeout: 30000 });
+
+    res.json({
+      reply: resp.data.reply,
+      images: resp.data.images || [],
+      session_id: session_id || resp.data.conversationId,
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Chat service unavailable' });
+  }
+});
+
 module.exports = router;

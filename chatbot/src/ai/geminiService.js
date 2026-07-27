@@ -40,6 +40,7 @@ async function call(conversationHistory, customerContext) {
   let response = result.response;
   let iterations = 0;
   const MAX_TOOL_ITERATIONS = 5;
+  const collectedImages = [];
 
   while (iterations < MAX_TOOL_ITERATIONS) {
     const functionCalls = response.functionCalls();
@@ -51,6 +52,13 @@ async function call(conversationHistory, customerContext) {
     const toolResults = [];
     for (const fc of functionCalls) {
       const toolResult = await toolExecutor.execute(fc.name, fc.args);
+      if (fc.name === 'search_products' && toolResult.products) {
+        for (const p of toolResult.products) {
+          if (p.image_url && collectedImages.length < 3) {
+            collectedImages.push({ url: p.image_url, caption: `${p.name} — Rs. ${Number(p.discounted_price || p.price).toLocaleString()}` });
+          }
+        }
+      }
       toolResults.push({
         functionResponse: { name: fc.name, response: toolResult },
       });
@@ -62,7 +70,7 @@ async function call(conversationHistory, customerContext) {
 
   const text = response.text();
   if (!text) throw new Error('Empty response from Gemini');
-  return text;
+  return { text, images: collectedImages };
 }
 
 module.exports = { call };

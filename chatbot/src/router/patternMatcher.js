@@ -6,6 +6,13 @@ const greetings = require('../data/greetings');
 const faq = require('../data/faqData');
 const logger = require('../utils/logger');
 
+const PUBLIC_BASE = process.env.PUBLIC_URL || 'https://pos.littora.lk';
+function toPublicUrl(imageUrl) {
+  if (!imageUrl) return null;
+  if (imageUrl.startsWith('http')) return imageUrl;
+  return PUBLIC_BASE + (imageUrl.startsWith('/') ? '' : '/') + imageUrl;
+}
+
 async function match(message, customer) {
   const intent = classify(message);
   if (!intent) return null;
@@ -70,11 +77,12 @@ async function handleProductQuery(message, intent) {
     ? `Here's what we have for "${productName}"! 😊\n`
     : `Prices for "${productName}"! 😊\n`;
 
-  return result(
-    intent,
-    templates.productList(variants, intro),
-    variants.filter(v => v.image_url).map(v => v.image_url)
-  );
+  const images = variants
+    .filter(v => v.image_url)
+    .slice(0, 3)
+    .map(v => ({ url: toPublicUrl(v.image_url), caption: `${v.product_name} — ${templates.formatPrice(v.retail_price)}` }));
+
+  return result(intent, templates.productList(variants, intro), images);
 }
 
 async function handleOrderTracking(message) {

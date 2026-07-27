@@ -55,10 +55,22 @@ async function ensureTables() {
 async function getOrCreate(channel, senderInfo) {
   const userId = senderInfo.channelUserId || senderInfo.phone;
   const [rows] = await db.query(
-    `SELECT * FROM chatbot_conversations WHERE channel = ? AND channel_user_id = ? AND status != 'closed' ORDER BY id DESC LIMIT 1`,
+    `SELECT * FROM chatbot_conversations WHERE channel = ? AND channel_user_id = ? ORDER BY id DESC LIMIT 1`,
     [channel, userId]
   );
-  if (rows.length > 0) return rows[0];
+  if (rows.length > 0) {
+    const conv = rows[0];
+    if (conv.status === 'closed') {
+      await db.query(
+        `UPDATE chatbot_conversations SET status = 'active', owner_takeover = 0, ghost_nudge_count = 0, last_message_at = NOW() WHERE id = ?`,
+        [conv.id]
+      );
+      conv.status = 'active';
+      conv.owner_takeover = 0;
+      conv.ghost_nudge_count = 0;
+    }
+    return conv;
+  }
 
   const [result] = await db.query(
     `INSERT INTO chatbot_conversations (channel, channel_user_id, customer_id) VALUES (?, ?, ?)`,

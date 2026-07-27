@@ -1,7 +1,7 @@
 const TOOLS = [
   {
     name: 'search_products',
-    description: 'Search for products by name, brand, or category. Returns product name, variants, prices, stock status, and image URLs.',
+    description: 'Search for products by name, brand, or category. Returns product name, variants, prices, stock status, image_url (public URL for WhatsApp), and website_link (littora.lk product page). Include the website_link in your response when showing product details.',
     parameters: {
       type: 'OBJECT',
       properties: {

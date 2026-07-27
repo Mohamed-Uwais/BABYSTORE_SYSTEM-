@@ -36,6 +36,79 @@ function truncate(str, len = 60) {
   return str.length > len ? str.slice(0, len) + '…' : str;
 }
 
+function ProductSearchPopup({ conversationId, onClose, onSent }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [sendingId, setSendingId] = useState(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const search = async (q) => {
+    setQuery(q);
+    if (q.length < 2) { setResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await client.get(`/chatbot/products/search?q=${encodeURIComponent(q)}`);
+      setResults(res.data.data || []);
+    } catch { setResults([]); }
+    setSearching(false);
+  };
+
+  const send = async (variant) => {
+    setSendingId(variant.variant_id);
+    try {
+      await client.post(`/chatbot/conversations/${conversationId}/send-product-image`, { variant_id: variant.variant_id });
+      onSent();
+      onClose();
+    } catch { /* ignore */ }
+    setSendingId(null);
+  };
+
+  return (
+    <div className="absolute bottom-full left-0 mb-2 w-80 rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 z-50">
+      <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={e => search(e.target.value)}
+          placeholder="Search products..."
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+        />
+      </div>
+      <div className="max-h-60 overflow-y-auto p-1">
+        {searching && <p className="p-3 text-center text-xs text-slate-400">Searching...</p>}
+        {!searching && query.length >= 2 && results.length === 0 && (
+          <p className="p-3 text-center text-xs text-slate-400">No products with images found</p>
+        )}
+        {results.map(r => (
+          <button
+            key={r.variant_id}
+            onClick={() => send(r)}
+            disabled={sendingId === r.variant_id}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            {r.image_url && (
+              <img src={r.image_url.startsWith('http') ? r.image_url : `${r.image_url}`} className="h-10 w-10 rounded-lg object-cover" alt="" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{r.name}</p>
+              <p className="text-xs text-slate-500">{r.variant_label} · Rs. {Number(r.retail_price).toLocaleString()}</p>
+            </div>
+            {sendingId === r.variant_id ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
+            ) : (
+              <span className="text-lg">📤</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Conversations() {
   const [conversations, setConversations] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -44,8 +117,11 @@ export default function Conversations() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const pollRef = useRef(null);
 
   const fetchList = useCallback(async () => {
@@ -108,8 +184,31 @@ export default function Conversations() {
     } catch { /* ignore */ }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !selected) return;
+    setUploadingFile(true);
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      await client.post(`/chatbot/conversations/${selected}/send-image`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await fetchDetail(selected);
+      await fetchList();
+    } catch { /* ignore */ }
+    setUploadingFile(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const refreshAfterMedia = async () => {
+    await fetchDetail(selected);
+    await fetchList();
+  };
+
   const conv = detail?.conversation;
   const messages = detail?.messages || [];
+  const isTakeover = conv?.owner_takeover;
 
   return (
     <PageWrapper className="h-full">
@@ -227,6 +326,7 @@ export default function Conversations() {
                   const isCustomer = msg.sender === 'customer';
                   const isOwner = msg.sender === 'owner';
                   const provider = PROVIDER_BADGES[msg.handled_by];
+                  const isImage = msg.message_type === 'image' && msg.image_url;
 
                   return (
                     <motion.div
@@ -242,6 +342,14 @@ export default function Conversations() {
                             ? 'bg-brand-600 text-white'
                             : 'bg-emerald-50 text-slate-900 ring-1 ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-100 dark:ring-emerald-800'
                       }`}>
+                        {isImage && (
+                          <img
+                            src={msg.image_url}
+                            alt=""
+                            className="mb-2 max-h-48 rounded-xl object-cover cursor-pointer"
+                            onClick={() => window.open(msg.image_url, '_blank')}
+                          />
+                        )}
                         <p className="whitespace-pre-wrap">{msg.message_text}</p>
                         <div className={`mt-1 flex items-center gap-2 text-[10px] ${
                           isCustomer ? 'text-slate-400' : isOwner ? 'text-white/60' : 'text-emerald-600/60 dark:text-emerald-400/60'
@@ -263,8 +371,42 @@ export default function Conversations() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Reply Input */}
+              {/* Reply Input with Media Buttons */}
               <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+                {isTakeover && (
+                  <div className="relative mb-2 flex items-center gap-1">
+                    <button
+                      onClick={() => setShowProductSearch(!showProductSearch)}
+                      title="Send product image"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl text-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >📷</button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Upload & send image"
+                      disabled={uploadingFile}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl text-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+                    >{uploadingFile ? '⏳' : '📎'}</button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    <AnimatePresence>
+                      {showProductSearch && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowProductSearch(false)} />
+                          <ProductSearchPopup
+                            conversationId={selected}
+                            onClose={() => setShowProductSearch(false)}
+                            onSent={refreshAfterMedia}
+                          />
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <input
                     ref={inputRef}
@@ -272,19 +414,19 @@ export default function Conversations() {
                     value={replyText}
                     onChange={e => setReplyText(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                    placeholder={conv?.owner_takeover ? 'Type a reply (manual mode)…' : 'Take over to reply manually…'}
-                    disabled={!conv?.owner_takeover}
+                    placeholder={isTakeover ? 'Type a reply (manual mode)…' : 'Take over to reply manually…'}
+                    disabled={!isTakeover}
                     className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:ring-brand-900/30"
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!conv?.owner_takeover || !replyText.trim() || sending}
+                    disabled={!isTakeover || !replyText.trim() || sending}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white transition-all hover:bg-brand-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                   </button>
                 </div>
-                {!conv?.owner_takeover && (
+                {!isTakeover && (
                   <p className="mt-1.5 text-[11px] text-slate-400">Liya is handling this conversation. Click "Take Over" to reply manually.</p>
                 )}
               </div>
