@@ -252,7 +252,7 @@ const GRADIENT_MAP = {
   pink: 'from-pink-500 via-rose-500 to-red-500',
 };
 
-function PromoCarousel({ banners }) {
+function PromoCarousel({ banners, productImages = [] }) {
   const [current, setCurrent] = useState(0);
 
   useEffect(() => {
@@ -265,6 +265,7 @@ function PromoCarousel({ banners }) {
 
   const slide = banners[current];
   const gradient = GRADIENT_MAP[slide.color] || GRADIENT_MAP.orange;
+  const showImages = productImages.length >= 2;
 
   return (
     <section className="py-8 lg:py-12">
@@ -277,25 +278,43 @@ function PromoCarousel({ banners }) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -80 }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className={`relative overflow-hidden rounded-3xl bg-gradient-to-r ${gradient} p-8 sm:p-12`}
+              className={`relative overflow-hidden rounded-3xl bg-gradient-to-r ${gradient} p-8 sm:p-12 ${showImages ? 'min-h-[180px] sm:min-h-[200px]' : ''}`}
             >
               <div className="absolute inset-0 animate-diagonal-lines" />
               <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
               <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
 
               <div className="relative z-10 flex flex-col items-center text-center sm:flex-row sm:text-left sm:justify-between">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 sm:max-w-[55%]">
                   <span className="text-4xl sm:text-5xl">{slide.icon}</span>
                   <div>
                     <p className="text-xl font-bold text-white sm:text-2xl lg:text-3xl">{slide.text}</p>
                   </div>
                 </div>
-                <Link
-                  to={slide.link || '/shop'}
-                  className="mt-4 sm:mt-0 inline-flex items-center gap-2 rounded-full bg-white/20 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/30 hover:gap-3 shrink-0"
-                >
-                  {slide.cta} <ArrowRight className="h-4 w-4" />
-                </Link>
+                <div className="flex items-center gap-4 mt-4 sm:mt-0">
+                  {showImages && (
+                    <div className="hidden sm:flex items-end gap-2">
+                      {productImages.slice(current * 2, current * 2 + 3).concat(productImages.slice(0, 3)).slice(0, 3).map((img, i) => (
+                        <motion.img
+                          key={`${current}-${i}`}
+                          src={img}
+                          alt=""
+                          initial={{ opacity: 0, y: 20, rotate: 0 }}
+                          animate={{ opacity: 1, y: 0, rotate: i === 0 ? -3 : i === 2 ? 3 : 0 }}
+                          transition={{ delay: i * 0.1, duration: 0.4 }}
+                          className="h-24 w-24 lg:h-32 lg:w-32 rounded-2xl bg-white/20 object-contain p-2 shadow-lg backdrop-blur-sm"
+                          style={{ transform: `translateY(${i === 1 ? -8 : 0}px)` }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <Link
+                    to={slide.link || '/shop'}
+                    className="inline-flex items-center gap-2 rounded-full bg-white/20 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/30 hover:gap-3 shrink-0"
+                  >
+                    {slide.cta} <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
               </div>
             </motion.div>
           </AnimatePresence>
@@ -449,7 +468,7 @@ export default function Home() {
       <HeroSlider whatsapp={footer?.whatsapp} />
 
       {/* ═══════════════════ PROMO CAROUSEL ═══════════════════ */}
-      <PromoCarousel banners={promoBanners} />
+      <PromoCarousel banners={promoBanners} productImages={bestSellers.filter(p => p.image_url).map(p => p.image_url)} />
 
       {/* ═══════════════════ WHAT WE SELL ═══════════════════ */}
       <section className="py-20 lg:py-28">
@@ -638,6 +657,43 @@ export default function Home() {
             <div className="absolute -top-24 -right-24 h-80 w-80 rounded-full bg-white/10 blur-3xl" />
             <div className="absolute -bottom-24 -left-24 h-80 w-80 rounded-full bg-white/10 blur-3xl" />
 
+            {/* Floating product images — left side */}
+            {bestSellers.filter(p => p.image_url).length >= 4 && (
+              <>
+                <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-3">
+                  {bestSellers.filter(p => p.image_url).slice(0, 2).map((p, i) => (
+                    <motion.img
+                      key={p.variant_id}
+                      src={p.image_url}
+                      alt=""
+                      initial={{ opacity: 0, x: -30 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: i * 0.15 + 0.3 }}
+                      className="h-28 w-28 xl:h-36 xl:w-36 rounded-2xl bg-white/15 object-contain p-2 shadow-xl backdrop-blur-sm"
+                      style={{ transform: `rotate(${i === 0 ? -4 : 3}deg)` }}
+                    />
+                  ))}
+                </div>
+                {/* Right side */}
+                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-3">
+                  {bestSellers.filter(p => p.image_url).slice(2, 4).map((p, i) => (
+                    <motion.img
+                      key={p.variant_id}
+                      src={p.image_url}
+                      alt=""
+                      initial={{ opacity: 0, x: 30 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: i * 0.15 + 0.3 }}
+                      className="h-28 w-28 xl:h-36 xl:w-36 rounded-2xl bg-white/15 object-contain p-2 shadow-xl backdrop-blur-sm"
+                      style={{ transform: `rotate(${i === 0 ? 4 : -3}deg)` }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
             <div className="relative z-10">
               <motion.div
                 animate={{ scale: [1, 1.05, 1] }}
@@ -779,11 +835,48 @@ export default function Home() {
           </svg>
         </div>
 
+        {/* Floating product images */}
+        {bestSellers.filter(p => p.image_url).length >= 4 && (
+          <>
+            <div className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-4 xl:left-12">
+              {bestSellers.filter(p => p.image_url).slice(4, 6).concat(bestSellers.filter(p => p.image_url).slice(0, 2)).slice(0, 2).map((p, i) => (
+                <motion.img
+                  key={p.variant_id}
+                  src={p.image_url}
+                  alt=""
+                  initial={{ opacity: 0, x: -40 }}
+                  whileInView={{ opacity: 0.7, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.2 + 0.2 }}
+                  className="h-28 w-28 xl:h-36 xl:w-36 rounded-2xl bg-white/5 object-contain p-3 shadow-2xl"
+                  style={{ transform: `rotate(${i === 0 ? -5 : 4}deg)` }}
+                />
+              ))}
+            </div>
+            <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 hidden lg:flex flex-col gap-4 xl:right-12">
+              {bestSellers.filter(p => p.image_url).slice(6, 8).concat(bestSellers.filter(p => p.image_url).slice(2, 4)).slice(0, 2).map((p, i) => (
+                <motion.img
+                  key={p.variant_id}
+                  src={p.image_url}
+                  alt=""
+                  initial={{ opacity: 0, x: 40 }}
+                  whileInView={{ opacity: 0.7, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.2 + 0.2 }}
+                  className="h-28 w-28 xl:h-36 xl:w-36 rounded-2xl bg-white/5 object-contain p-3 shadow-2xl"
+                  style={{ transform: `rotate(${i === 0 ? 5 : -4}deg)` }}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="mx-auto max-w-7xl px-4 text-center lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
+            className="relative z-10"
           >
             <h2 className="text-3xl font-bold text-white sm:text-4xl lg:text-5xl">{cta.headline}</h2>
             <p className="mx-auto mt-4 max-w-lg text-base text-slate-400 leading-relaxed">

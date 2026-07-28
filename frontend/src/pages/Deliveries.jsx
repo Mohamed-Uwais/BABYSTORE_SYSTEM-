@@ -103,8 +103,14 @@ export default function Deliveries() {
   }
 
   function getTrackUrl(order) {
-    if (!order.tracking_number || !order.tracking_url_template) return null;
-    return order.tracking_url_template.replace('{tracking_number}', order.tracking_number);
+    if (!order.tracking_number) return null;
+    if (order.tracking_url_template) {
+      return order.tracking_url_template.replace('{tracking_number}', order.tracking_number);
+    }
+    if (order.courier_code === 'fardar') {
+      return `https://www.google.com/search?q=fardar+express+tracking+${encodeURIComponent(order.tracking_number)}`;
+    }
+    return null;
   }
 
   async function koombiyoCreateWaybill(order) {
@@ -126,6 +132,18 @@ export default function Deliveries() {
       const r = await client.get(`/koombiyo/track/${waybillNo}`);
       setKoombiyoTrack({ waybill: waybillNo, data: r.data.data });
     } catch (err) { toast.error('Could not track shipment'); }
+  }
+
+  async function refreshLiveTracking(orderId) {
+    try {
+      setKoombiyoBusy(orderId);
+      const r = await client.get(`/koombiyo/track-order/${orderId}`);
+      if (r.data.data?.status) {
+        toast.success(`Status: ${r.data.data.status}`);
+        load();
+      }
+    } catch (err) { toast.error('Could not refresh tracking'); }
+    finally { setKoombiyoBusy(null); }
   }
 
   async function koombiyoCancelWaybill(waybillNo) {
@@ -337,6 +355,10 @@ export default function Deliveries() {
                           <button onClick={() => koombiyoTrackOrder(order.tracking_number)}
                             className="flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-400">
                             Track (Koombiyo)
+                          </button>
+                          <button onClick={() => refreshLiveTracking(order.id)} disabled={koombiyoBusy === order.id}
+                            className="flex items-center gap-1 rounded-lg border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 transition hover:bg-green-100 disabled:opacity-50 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400">
+                            {koombiyoBusy === order.id ? 'Refreshing...' : 'Refresh Status'}
                           </button>
                           <button onClick={() => koombiyoPrintLabel(order.tracking_number)}
                             className="flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-100 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-400">

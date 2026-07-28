@@ -151,15 +151,27 @@ async function createOrder(payload) {
 
       const creditPayment = payments.find(p => p.payment_method === 'store_credit');
       if (creditPayment) {
-        await customerModel.addLedgerEntry(connection, {
-          customer_id, entry_type: 'credit_issued', credit_delta: parseFloat(creditPayment.amount),
-          reference_type: 'order', reference_id: orderId,
-          notes: `Bought on credit — order ${order_number}`, created_by: cashier_id
-        });
+        const [[existingCredit]] = await connection.query(
+          `SELECT id FROM customer_ledger WHERE customer_id = ? AND entry_type = 'credit_issued' AND reference_type = 'order' AND reference_id = ?`,
+          [customer_id, orderId]
+        );
+        if (!existingCredit) {
+          // For courier delivery, credit = product value only (courier collects delivery fee COD)
+          const creditAmount = fulfillment_type === 'courier_delivery'
+            ? (subtotal - discount_total)
+            : parseFloat(creditPayment.amount);
+          await customerModel.addLedgerEntry(connection, {
+            customer_id, entry_type: 'credit_issued', credit_delta: creditAmount,
+            reference_type: 'order', reference_id: orderId,
+            notes: `Bought on credit — order ${order_number}${fulfillment_type === 'courier_delivery' ? ' (excl. delivery fee)' : ''}`,
+            created_by: cashier_id
+          });
+        }
       }
     }
 
     // --- 8. Delivery record (if applicable) ---
+    let courierCode = null;
     if (fulfillment_type === 'courier_delivery' && delivery) {
       await connection.query(
         `INSERT INTO order_deliveries
@@ -168,12 +180,52 @@ async function createOrder(payload) {
         [orderId, delivery.courier_id, delivery.tracking_number || null,
          delivery.receiver_name || null, delivery.receiver_phone || null, delivery.receiver_address || null]
       );
+      if (delivery.courier_id) {
+        const [[courier]] = await connection.query('SELECT code, name FROM couriers WHERE id = ?', [delivery.courier_id]);
+        courierCode = courier?.code;
+      }
     } else if (fulfillment_type === 'self_delivery' && delivery) {
       await connection.query(
         `INSERT INTO order_deliveries (order_id, receiver_name, receiver_phone, receiver_address)
          VALUES (?, ?, ?, ?)`,
         [orderId, delivery.receiver_name || null, delivery.receiver_phone || null, delivery.receiver_address || null]
       );
+    }
+
+    // --- 8b. Courier credit: Koombiyo/Fardar collect COD, so they owe us the product value ---
+    const isCourierCOD = isPOS && fulfillment_type === 'courier_delivery' && courierCode && ['koombiyo', 'fardar'].includes(courierCode);
+    if (isCourierCOD) {
+      const courierNames = { koombiyo: 'Koombiyo Delivery', fardar: 'Fardar Express' };
+      const courierPhones = { koombiyo: 'KOOMBIYO', fardar: 'FARDAR' };
+      const cName = courierNames[courierCode];
+      const cPhone = courierPhones[courierCode];
+
+      const [[existingCourier]] = await connection.query(
+        'SELECT id FROM customers WHERE phone = ?', [cPhone]
+      );
+      let courierCustomerId;
+      if (existingCourier) {
+        courierCustomerId = existingCourier.id;
+      } else {
+        const [ins] = await connection.query(
+          `INSERT INTO customers (full_name, phone, customer_type, loyalty_tier) VALUES (?, ?, 'loyalty', 'silver')`,
+          [cName, cPhone]
+        );
+        courierCustomerId = ins.insertId;
+      }
+
+      const productValue = subtotal - discount_total;
+      if (productValue > 0) {
+        await customerModel.addLedgerEntry(connection, {
+          customer_id: courierCustomerId,
+          entry_type: 'credit_issued',
+          credit_delta: productValue,
+          reference_type: 'order',
+          reference_id: orderId,
+          notes: `COD collection — order ${order_number} (product value only, excl. delivery fee Rs. ${delivery_fee})`,
+          created_by: cashier_id,
+        });
+      }
     }
 
     // --- 9. Log initial status in history ---
@@ -263,7 +315,7 @@ async function processRefund(orderId, refundData, processedBy) {
 
     const { order_item_id, quantity, reason, refund_amount, restock } = refundData;
 
-    const [[order]] = await connection.query('SELECT id, status FROM orders WHERE id = ? FOR UPDATE', [orderId]);
+    const [[order]] = await connection.query('SELECT id, status, customer_id, grand_total FROM orders WHERE id = ? FOR UPDATE', [orderId]);
     if (!order) throw new Error('Order not found');
     if (['cancelled', 'refunded'].includes(order.status)) {
       throw new Error(`Cannot refund an order with status "${order.status}"`);
@@ -313,6 +365,21 @@ async function processRefund(orderId, refundData, processedBy) {
     );
     const newStatus = total_returned_qty >= total_items_qty ? 'refunded' : 'partially_refunded';
     await connection.query('UPDATE orders SET status = ? WHERE id = ?', [newStatus, orderId]);
+
+    if (order.customer_id) {
+      const pointsToDeduct = Math.floor(refund_amount / 100);
+      if (pointsToDeduct > 0) {
+        await customerModel.addLedgerEntry(connection, {
+          customer_id: order.customer_id,
+          entry_type: 'points_redeemed',
+          points_delta: -pointsToDeduct,
+          reference_type: 'refund',
+          reference_id: orderId,
+          notes: `Points deducted for refund on order #${orderId}`,
+          created_by: processedBy,
+        });
+      }
+    }
 
     await connection.commit();
     return { success: true, new_status: newStatus };
@@ -411,6 +478,21 @@ async function processReturnExchange(data, processedBy) {
         notes: `Credit reduced from return on order #${original_order_id}`,
         created_by: processedBy,
       });
+    }
+
+    if (effectiveCustomerId) {
+      const pointsToDeduct = Math.floor(totalRefundAmount / 100);
+      if (pointsToDeduct > 0) {
+        await customerModel.addLedgerEntry(connection, {
+          customer_id: effectiveCustomerId,
+          entry_type: 'points_redeemed',
+          points_delta: -pointsToDeduct,
+          reference_type: 'refund',
+          reference_id: original_order_id,
+          notes: `Points deducted for return on order #${original_order_id}`,
+          created_by: processedBy,
+        });
+      }
     }
 
     await connection.commit();

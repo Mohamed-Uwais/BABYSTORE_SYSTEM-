@@ -3,27 +3,30 @@ const db = require('../config/db');
 async function getSummary() {
   const [[todayStats]] = await db.query(`
     SELECT COUNT(*) AS orders_today,
-           COALESCE(SUM(grand_total), 0) AS revenue_today
+           COALESCE(SUM(subtotal - discount_total), 0) AS revenue_today,
+           COALESCE(SUM(delivery_fee), 0) AS delivery_collected_today
     FROM orders
     WHERE DATE(created_at) = CURDATE() AND status NOT IN ('cancelled')
   `);
 
   const [[weekStats]] = await db.query(`
     SELECT COUNT(*) AS orders_week,
-           COALESCE(SUM(grand_total), 0) AS revenue_week
+           COALESCE(SUM(subtotal - discount_total), 0) AS revenue_week,
+           COALESCE(SUM(delivery_fee), 0) AS delivery_collected_week
     FROM orders
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND status NOT IN ('cancelled')
   `);
 
   const [[monthStats]] = await db.query(`
     SELECT COUNT(*) AS orders_month,
-           COALESCE(SUM(grand_total), 0) AS revenue_month
+           COALESCE(SUM(subtotal - discount_total), 0) AS revenue_month,
+           COALESCE(SUM(delivery_fee), 0) AS delivery_collected_month
     FROM orders
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND status NOT IN ('cancelled')
   `);
 
   const [[prevMonthStats]] = await db.query(`
-    SELECT COALESCE(SUM(grand_total), 0) AS revenue_prev_month
+    SELECT COALESCE(SUM(subtotal - discount_total), 0) AS revenue_prev_month
     FROM orders
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
       AND created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
@@ -50,9 +53,9 @@ async function getSummary() {
     : null;
 
   return {
-    today: { orders: todayStats.orders_today, revenue: Number(todayStats.revenue_today) },
-    week: { orders: weekStats.orders_week, revenue: Number(weekStats.revenue_week) },
-    month: { orders: monthStats.orders_month, revenue: Number(monthStats.revenue_month), revenue_growth: revenueGrowth ? Number(revenueGrowth) : null },
+    today: { orders: todayStats.orders_today, revenue: Number(todayStats.revenue_today), delivery_collected: Number(todayStats.delivery_collected_today) },
+    week: { orders: weekStats.orders_week, revenue: Number(weekStats.revenue_week), delivery_collected: Number(weekStats.delivery_collected_week) },
+    month: { orders: monthStats.orders_month, revenue: Number(monthStats.revenue_month), delivery_collected: Number(monthStats.delivery_collected_month), revenue_growth: revenueGrowth ? Number(revenueGrowth) : null },
     customers: customerCount.total,
     active_products: productCount.total,
     low_stock_count: lowStockCount.total,
@@ -64,7 +67,8 @@ async function getSalesChart(days = 30) {
   const [rows] = await db.query(`
     SELECT DATE(created_at) AS date,
            COUNT(*) AS orders,
-           COALESCE(SUM(grand_total), 0) AS revenue
+           COALESCE(SUM(subtotal - discount_total), 0) AS revenue,
+           COALESCE(SUM(delivery_fee), 0) AS delivery_collected
     FROM orders
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
       AND status NOT IN ('cancelled')
@@ -72,7 +76,7 @@ async function getSalesChart(days = 30) {
     ORDER BY date
   `, [days]);
 
-  return rows.map(r => ({ date: r.date, orders: r.orders, revenue: Number(r.revenue) }));
+  return rows.map(r => ({ date: r.date, orders: r.orders, revenue: Number(r.revenue), delivery_collected: Number(r.delivery_collected) }));
 }
 
 async function getBestSellers(limit = 10) {
@@ -99,7 +103,7 @@ async function getStaffPerformance() {
   const [rows] = await db.query(`
     SELECT u.id, u.full_name, u.username, u.role,
            COUNT(o.id) AS orders_count,
-           COALESCE(SUM(o.grand_total), 0) AS total_sales
+           COALESCE(SUM(o.subtotal - o.discount_total), 0) AS total_sales
     FROM users u
     LEFT JOIN orders o ON o.cashier_id = u.id
       AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)

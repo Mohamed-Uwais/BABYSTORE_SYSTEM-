@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Package, Truck, CheckCircle2, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Package, Truck, CheckCircle2, Clock, Loader2, AlertCircle, ExternalLink, RefreshCw, MapPin } from 'lucide-react';
 import api from '../api/client';
 import PageHero from '../components/PageHero';
 import SEO from '../components/SEO';
@@ -11,14 +11,19 @@ function formatPrice(amount) {
 }
 
 const STATUS_CONFIG = {
-  pending: { icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50', label: 'Order Pending' },
-  confirmed: { icon: CheckCircle2, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Confirmed' },
-  processing: { icon: Package, color: 'text-primary-500', bg: 'bg-primary-50', label: 'Processing' },
-  shipped: { icon: Truck, color: 'text-purple-500', bg: 'bg-purple-50', label: 'Shipped' },
-  delivered: { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50', label: 'Delivered' },
-  completed: { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50', label: 'Completed' },
-  cancelled: { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50', label: 'Cancelled' },
+  pending: { icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Order Pending', step: 0 },
+  confirmed: { icon: CheckCircle2, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Confirmed', step: 1 },
+  processing: { icon: Package, color: 'text-primary-500', bg: 'bg-primary-50', border: 'border-primary-200', label: 'Processing', step: 2 },
+  shipped: { icon: Truck, color: 'text-purple-500', bg: 'bg-purple-50', border: 'border-purple-200', label: 'Shipped', step: 3 },
+  in_transit: { icon: Truck, color: 'text-purple-500', bg: 'bg-purple-50', border: 'border-purple-200', label: 'In Transit', step: 3 },
+  out_for_delivery: { icon: MapPin, color: 'text-indigo-500', bg: 'bg-indigo-50', border: 'border-indigo-200', label: 'Out for Delivery', step: 4 },
+  delivered: { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Delivered', step: 5 },
+  completed: { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Completed', step: 5 },
+  cancelled: { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200', label: 'Cancelled', step: -1 },
+  returned: { icon: AlertCircle, color: 'text-orange-500', bg: 'bg-orange-50', border: 'border-orange-200', label: 'Returned', step: -1 },
 };
+
+const PROGRESS_STEPS = ['Ordered', 'Confirmed', 'Processing', 'Shipped', 'Out for Delivery', 'Delivered'];
 
 export default function TrackOrder() {
   const [searchParams] = useSearchParams();
@@ -28,6 +33,8 @@ export default function TrackOrder() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
+  const [liveTracking, setLiveTracking] = useState(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('order')) handleSearch(null, searchParams.get('order'));
@@ -40,11 +47,15 @@ export default function TrackOrder() {
     setLoading(true);
     setError('');
     setSearched(true);
+    setLiveTracking(null);
     try {
       const params = new URLSearchParams({ order_number: num });
       if (phone.trim()) params.set('phone', phone.trim());
       const res = await api.get(`/track?${params}`);
       setOrder(res.data.data);
+      if (res.data.data?.delivery?.tracking_number) {
+        fetchLiveTracking(num);
+      }
     } catch (err) {
       setOrder(null);
       setError(err.response?.data?.message || 'Order not found. Please check your order number.');
@@ -53,7 +64,20 @@ export default function TrackOrder() {
     }
   };
 
+  const fetchLiveTracking = async (num) => {
+    setTrackingLoading(true);
+    try {
+      const res = await api.get(`/track-live/${num || order?.order_number}`);
+      setLiveTracking(res.data.data);
+    } catch {
+      // silent fail
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
   const statusConfig = order ? (STATUS_CONFIG[order.status] || STATUS_CONFIG.pending) : null;
+  const currentStep = statusConfig?.step ?? 0;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -62,7 +86,6 @@ export default function TrackOrder() {
 
       <div className="bg-white py-12">
         <div className="mx-auto max-w-2xl px-4 text-center">
-
           <form onSubmit={handleSearch} className="mt-8 space-y-3">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -101,13 +124,10 @@ export default function TrackOrder() {
         )}
 
         {order && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+
             {/* Status card */}
-            <div className={`rounded-2xl border p-6 ${statusConfig.bg}`}>
+            <div className={`rounded-2xl border p-6 ${statusConfig.bg} ${statusConfig.border}`}>
               <div className="flex items-center gap-3">
                 <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ${statusConfig.color}`}>
                   <statusConfig.icon className="h-6 w-6" />
@@ -133,6 +153,82 @@ export default function TrackOrder() {
               )}
             </div>
 
+            {/* Progress bar */}
+            {currentStep >= 0 && (
+              <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  {PROGRESS_STEPS.map((step, i) => (
+                    <div key={step} className="flex flex-1 items-center">
+                      <div className="flex flex-col items-center">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                          i <= currentStep ? 'bg-primary-500 text-white' : 'bg-slate-100 text-slate-400'
+                        }`}>
+                          {i <= currentStep ? '✓' : i + 1}
+                        </div>
+                        <span className={`mt-1.5 text-[10px] font-medium leading-tight text-center ${
+                          i <= currentStep ? 'text-primary-600' : 'text-slate-400'
+                        }`}>{step}</span>
+                      </div>
+                      {i < PROGRESS_STEPS.length - 1 && (
+                        <div className={`mx-1 h-0.5 flex-1 rounded ${i < currentStep ? 'bg-primary-400' : 'bg-slate-100'}`} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Live courier tracking */}
+            {order.delivery && (
+              <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-slate-900">Delivery Tracking</h3>
+                  <button
+                    onClick={() => fetchLiveTracking()}
+                    disabled={trackingLoading}
+                    className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${trackingLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Courier</span>
+                    <span className="font-medium text-slate-700">{order.delivery.courier_name || 'Self Delivery'}</span>
+                  </div>
+                  {order.delivery.tracking_number && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">Tracking #</span>
+                      <span className="font-mono font-medium text-slate-700">{order.delivery.tracking_number}</span>
+                    </div>
+                  )}
+                  {liveTracking?.status && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">Live Status</span>
+                      <span className="rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700 capitalize">
+                        {liveTracking.status.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  )}
+                  {liveTracking?.tracking_url && (
+                    <a
+                      href={liveTracking.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-100"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Track on Courier Website
+                    </a>
+                  )}
+                  {liveTracking?.cached && (
+                    <p className="text-[11px] text-slate-400 text-center">Cached result — click Refresh after 5 minutes for latest update</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Order details */}
             <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
               <h3 className="text-base font-bold text-slate-900">Order Items</h3>
@@ -149,6 +245,9 @@ export default function TrackOrder() {
               </div>
               <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-4 text-sm">
                 <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span className="font-mono font-medium">{formatPrice(order.subtotal)}</span></div>
+                {Number(order.discount_total) > 0 && (
+                  <div className="flex justify-between text-emerald-600"><span>Discount</span><span className="font-mono font-medium">-{formatPrice(order.discount_total)}</span></div>
+                )}
                 {Number(order.delivery_fee) > 0 && (
                   <div className="flex justify-between"><span className="text-slate-500">Delivery</span><span className="font-mono font-medium">{formatPrice(order.delivery_fee)}</span></div>
                 )}
@@ -170,7 +269,7 @@ export default function TrackOrder() {
                         {i < order.history.length - 1 && <div className="h-full w-px bg-slate-200" />}
                       </div>
                       <div className="pb-4">
-                        <p className="text-sm font-medium text-slate-700 capitalize">{h.status.replace('_', ' ')}</p>
+                        <p className="text-sm font-medium text-slate-700 capitalize">{h.status.replace(/_/g, ' ')}</p>
                         {h.notes && <p className="text-xs text-slate-400">{h.notes}</p>}
                         <p className="text-xs text-slate-400">{new Date(h.created_at).toLocaleString('en-GB')}</p>
                       </div>

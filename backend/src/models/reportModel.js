@@ -17,9 +17,10 @@ async function salesReport({ from, to }) {
 
   const [[summary]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(grand_total), 0) AS total_revenue,
+           COALESCE(SUM(subtotal - discount_total), 0) AS total_revenue,
+           COALESCE(SUM(delivery_fee), 0) AS delivery_collected,
            COALESCE(SUM(discount_total), 0) AS total_discounts,
-           COALESCE(AVG(grand_total), 0) AS avg_order_value
+           COALESCE(AVG(subtotal - discount_total), 0) AS avg_order_value
     FROM orders
     WHERE created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
       AND status NOT IN ('cancelled')

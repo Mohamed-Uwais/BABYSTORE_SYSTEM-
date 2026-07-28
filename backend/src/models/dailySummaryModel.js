@@ -10,15 +10,16 @@ async function getDailySummary(date) {
   // 1. Sales overview
   const [[todayStats]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(grand_total), 0) AS total_revenue,
-           COALESCE(AVG(grand_total), 0) AS avg_order_value
+           COALESCE(SUM(subtotal - discount_total), 0) AS total_revenue,
+           COALESCE(SUM(delivery_fee), 0) AS delivery_collected,
+           COALESCE(AVG(subtotal - discount_total), 0) AS avg_order_value
     FROM orders
     WHERE created_at >= ? AND created_at < ? AND status NOT IN ('cancelled')
   `, [dateStr, nextDate]);
 
   const [[yesterdayStats]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(grand_total), 0) AS total_revenue
+           COALESCE(SUM(subtotal - discount_total), 0) AS total_revenue
     FROM orders
     WHERE created_at >= ? AND created_at < ? AND status NOT IN ('cancelled')
   `, [yesterday, dateStr]);
@@ -88,7 +89,7 @@ async function getDailySummary(date) {
   // 8. Staff activity
   const [staffActivity] = await db.query(`
     SELECT u.full_name, u.username, COUNT(o.id) AS orders_count,
-           COALESCE(SUM(o.grand_total), 0) AS total_sales
+           COALESCE(SUM(o.subtotal - o.discount_total), 0) AS total_sales
     FROM orders o
     JOIN users u ON u.id = o.cashier_id
     WHERE o.created_at >= ? AND o.created_at < ? AND o.status NOT IN ('cancelled')
@@ -105,6 +106,7 @@ async function getDailySummary(date) {
     sales: {
       total_orders: todayStats.total_orders,
       total_revenue: Number(todayStats.total_revenue),
+      delivery_collected: Number(todayStats.delivery_collected),
       avg_order_value: Number(todayStats.avg_order_value),
       yesterday_orders: yesterdayStats.total_orders,
       yesterday_revenue: Number(yesterdayStats.total_revenue),
