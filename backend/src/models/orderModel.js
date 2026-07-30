@@ -44,12 +44,12 @@ async function createOrder(payload) {
       discount_total = 0, delivery_fee = 0, notes
     } = payload;
 
-    if (!items || !items.length) {
+    if (!items || !Array.isArray(items) || !items.length) {
       throw new Error('Order must contain at least one item');
     }
 
-    if (!payments || !payments.length) {
-      throw new Error('Payment method is required');
+    if (!payments || !Array.isArray(payments) || !payments.length) {
+      throw new Error('At least one payment method is required');
     }
 
     // --- 1. Validate customer_type for credit (buy now, pay later) payments ---
