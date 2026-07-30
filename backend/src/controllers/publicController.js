@@ -51,7 +51,7 @@ exports.checkout = async (req, res, next) => {
   try {
     let body = req.body;
     if (typeof body.items === 'string') body.items = JSON.parse(body.items);
-    if (typeof body.payments === 'string') body.payments = JSON.parse(body.payments);
+    if (typeof body.payments === 'string') try { body.payments = JSON.parse(body.payments); } catch { body.payments = null; }
 
     const { phone, full_name, email, items, payments, fulfillment_type,
             delivery_address, delivery_zone_id, delivery, delivery_fee, notes,

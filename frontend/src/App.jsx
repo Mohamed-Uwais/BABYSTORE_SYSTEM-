@@ -32,7 +32,7 @@ function AppLayout({ children }) {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex-1 overflow-hidden pb-14 lg:pb-0">
+      <main className="flex-1 overflow-y-auto pb-14 lg:pb-0">
         {children}
       </main>
     </div>

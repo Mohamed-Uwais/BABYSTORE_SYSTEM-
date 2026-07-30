@@ -48,6 +48,10 @@ async function createOrder(payload) {
       throw new Error('Order must contain at least one item');
     }
 
+    if (!payments || !payments.length) {
+      throw new Error('Payment method is required');
+    }
+
     // --- 1. Validate customer_type for credit (buy now, pay later) payments ---
     const usesCredit = payments.some(p => p.payment_method === 'store_credit');
     if (usesCredit) {

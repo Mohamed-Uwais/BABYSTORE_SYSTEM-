@@ -235,10 +235,16 @@ export default function WebsiteContent() {
                 </div>
                 <Field label="Text" value={b.text} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'text', v)} />
                 <div className="grid grid-cols-3 gap-2">
-                  <Field label="Icon" value={b.icon} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'icon', v)} />
+                  <Field label="Icon (fallback)" value={b.icon} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'icon', v)} />
                   <Field label="CTA" value={b.cta} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'cta', v)} />
                   <Field label="Link" value={b.link} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'link', v)} />
                 </div>
+                <Field label="Background Image URL" value={b.bg_image || ''} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'bg_image', v)} placeholder="/uploads/... or https://..." />
+                {b.bg_image && (
+                  <div className="mt-1 mb-2">
+                    <img src={b.bg_image} alt="preview" className="h-16 w-full rounded-lg object-cover border border-slate-200" />
+                  </div>
+                )}
               </div>
             ))}
             <div className="flex gap-2">
@@ -330,6 +336,18 @@ export default function WebsiteContent() {
             <Field label="Badge text" value={c.cta_banner?.badge || ''} onChange={v => update('cta_banner', 'badge', v)} />
             <Field label="Headline" value={c.cta_banner?.headline || ''} onChange={v => update('cta_banner', 'headline', v)} />
             <Field label="Subtitle" value={c.cta_banner?.subtitle || ''} onChange={v => update('cta_banner', 'subtitle', v)} multiline />
+            <Field label="Background Image URL (Offer Banner)" value={c.cta_banner?.bg_image || ''} onChange={v => update('cta_banner', 'bg_image', v)} placeholder="/uploads/... or https://..." />
+            {c.cta_banner?.bg_image && (
+              <div className="mt-1 mb-2">
+                <img src={c.cta_banner.bg_image} alt="preview" className="h-16 w-full rounded-lg object-cover border border-slate-200" />
+              </div>
+            )}
+            <Field label="Background Image URL (Dark CTA / Pre-footer)" value={c.cta_banner?.bg_image_dark || ''} onChange={v => update('cta_banner', 'bg_image_dark', v)} placeholder="/uploads/... or https://..." />
+            {c.cta_banner?.bg_image_dark && (
+              <div className="mt-1 mb-2">
+                <img src={c.cta_banner.bg_image_dark} alt="preview" className="h-16 w-full rounded-lg object-cover border border-slate-200" />
+              </div>
+            )}
             <button onClick={() => saveSection('cta_banner')} disabled={saving.cta_banner} className={btnCls}>
               {saving.cta_banner ? 'Saving...' : 'Save CTA Banner'}
             </button>

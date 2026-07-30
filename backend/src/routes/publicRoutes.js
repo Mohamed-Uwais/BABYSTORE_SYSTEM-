@@ -8,6 +8,25 @@ const { upload } = require('../middleware/uploadMiddleware');
 router.get('/products', pc.getProducts);
 router.get('/products/:slug', pc.getProduct);
 router.get('/categories', pc.getCategories);
+
+// Featured product images for banners (one image per category)
+router.get('/banner-images', async (req, res) => {
+  try {
+    const db = require('../config/db');
+    const [rows] = await db.query(`
+      SELECT c.name AS category_name, pv.image_url
+      FROM product_variants pv
+      JOIN products p ON p.id = pv.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE pv.is_active = 1 AND p.is_active = 1 AND pv.image_url IS NOT NULL AND pv.image_url != ''
+      ORDER BY pv.current_stock DESC
+      LIMIT 20
+    `);
+    res.json({ success: true, data: rows.map(r => r.image_url) });
+  } catch (err) {
+    res.json({ success: true, data: [] });
+  }
+});
 router.get('/brands', pc.getBrands);
 router.get('/best-sellers', pc.getBestSellers);
 router.get('/new-arrivals', pc.getNewArrivals);
