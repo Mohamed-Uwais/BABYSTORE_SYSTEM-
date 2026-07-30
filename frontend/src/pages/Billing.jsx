@@ -556,6 +556,18 @@ export default function Billing() {
     setPayments((prev) => prev.map((p) => (p.method === method ? { ...p, amount } : p)));
   }
 
+  useEffect(() => {
+    if (!splitMode && payments.length === 1 && grandTotal > 0) {
+      setPayments(prev => {
+        const cur = parseFloat(prev[0]?.amount) || 0;
+        if (Math.abs(cur - grandTotal) > 0.01) {
+          return [{ ...prev[0], amount: grandTotal.toFixed(2) }];
+        }
+        return prev;
+      });
+    }
+  }, [grandTotal, splitMode]);
+
   const hasStoreCreditPayment = payments.some((p) => p.method === 'store_credit');
   const storeCreditBlocked = hasStoreCreditPayment && (!customer || customer.customer_type !== 'loyalty');
 
@@ -613,6 +625,11 @@ export default function Billing() {
 
   async function completeSale() {
     setError('');
+    const paymentsTotal = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+    if (Math.abs(paymentsTotal - grandTotal) > 0.5) {
+      toast.error(`Payment total (Rs. ${paymentsTotal.toFixed(2)}) doesn't match order total (Rs. ${grandTotal.toFixed(2)})`);
+      return;
+    }
     setSubmitting(true);
     try {
       const effectiveFulfillment = getEffectiveFulfillmentType();
