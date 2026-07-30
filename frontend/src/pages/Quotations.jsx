@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +22,7 @@ const STATUS_COLORS = {
 export default function Quotations() {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -46,37 +48,29 @@ export default function Quotations() {
     } catch { toast.error('Failed to update status'); }
   }
 
-  async function convertToOrder(q) {
-    setConverting(q.id);
-    try {
-      const items = typeof q.items === 'string' ? JSON.parse(q.items) : q.items;
-      const orderItems = items.map(i => ({
+  function convertToOrder(q) {
+    const items = typeof q.items === 'string' ? JSON.parse(q.items) : q.items;
+    const quotationData = {
+      id: q.id,
+      quotation_number: q.quotation_number,
+      customer_id: q.customer_id,
+      customer_name: q.customer_name,
+      customer_phone: q.customer_phone,
+      pricing_mode: q.pricing_mode || 'retail',
+      discount_total: Number(q.discount_total) || 0,
+      delivery_fee: Number(q.delivery_fee) || 0,
+      items: items.map(i => ({
         variant_id: i.variant_id,
+        product_name: i.product_name || i.name,
+        variant_name: i.variant_name,
+        sku: i.sku,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        discount_amount: 0,
-      }));
-      const subtotal = orderItems.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
-      const discountTotal = Number(q.discount_total) || 0;
-      const deliveryFee = Number(q.delivery_fee) || 0;
-      const grandTotal = subtotal - discountTotal + deliveryFee;
-      const res = await client.post('/orders/checkout', {
-        channel: 'pos',
-        customer_id: q.customer_id,
-        cashier_id: user?.id || null,
-        pricing_mode: q.pricing_mode,
-        fulfillment_type: 'pickup',
-        delivery_fee: deliveryFee,
-        discount_total: discountTotal,
-        items: orderItems,
-        payments: [{ payment_method: 'cash', amount: grandTotal }],
-      });
-      await client.patch(`/quotations/${q.id}/status`, { status: 'converted' });
-      toast.success(`Order #${res.data.data?.order_id || ''} created from quotation`);
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to convert to order');
-    } finally { setConverting(null); }
+        image_url: i.image_url,
+      })),
+    };
+    localStorage.setItem('LITTORA_convert_quotation', JSON.stringify(quotationData));
+    navigate('/billing?from_quotation=' + q.id);
   }
 
   const filtered = quotations.filter(q => {

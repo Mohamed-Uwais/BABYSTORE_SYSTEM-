@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -34,7 +35,9 @@ function getTierPrice(priceTiers, quantity, retailPrice) {
 export default function Billing() {
   const { user, hasPermission } = useAuth();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isOwner = hasPermission('settings');
+  const [fromQuotation, setFromQuotation] = useState(null);
 
   const [products, setProducts] = useState([]);
   const [bestSellers, setBestSellers] = useState([]);
@@ -109,6 +112,40 @@ export default function Billing() {
     loadBestSellers();
     client.get('/delivery/zones').then(r => setZones(r.data.data)).catch(() => {});
     client.get('/couriers').then(r => setCouriers(r.data.data || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const qId = searchParams.get('from_quotation');
+    if (!qId) return;
+    try {
+      const data = JSON.parse(localStorage.getItem('LITTORA_convert_quotation'));
+      if (!data || String(data.id) !== String(qId)) return;
+      localStorage.removeItem('LITTORA_convert_quotation');
+      setFromQuotation(data);
+      setCart(data.items.map(i => ({
+        variant_id: i.variant_id,
+        product_name: i.product_name,
+        variant_name: i.variant_name,
+        sku: i.sku,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        image_url: i.image_url,
+      })));
+      if (data.pricing_mode === 'wholesale') setWholesaleMode(true);
+      if (data.discount_total > 0) {
+        setManualDiscountType('fixed');
+        setManualDiscountValue(String(data.discount_total));
+      }
+      if (data.customer_id) {
+        client.get(`/customers/${data.customer_id}`).then(r => {
+          setCustomer(r.data.data);
+          setPhoneInput(r.data.data?.phone || '');
+        }).catch(() => {});
+      }
+      searchParams.delete('from_quotation');
+      setSearchParams(searchParams, { replace: true });
+      toast.success(`Loaded quotation ${data.quotation_number} — select payment and complete sale`);
+    } catch { /* ignore bad data */ }
   }, []);
 
   useEffect(() => {
@@ -672,6 +709,10 @@ export default function Billing() {
 
       const res = await client.post('/orders/checkout', payload);
       const orderData = res.data.data;
+      if (fromQuotation) {
+        client.patch(`/quotations/${fromQuotation.id}/status`, { status: 'converted' }).catch(() => {});
+        setFromQuotation(null);
+      }
       setSuccessOrder(orderData);
       setReceiptOrderId(orderData.orderId);
       setCart([]);
@@ -981,6 +1022,13 @@ export default function Billing() {
             )}
 
             {/* Cart */}
+            {fromQuotation && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
+                <span className="text-amber-400 text-sm font-medium">Converting Quotation {fromQuotation.quotation_number}</span>
+                <button onClick={() => { setFromQuotation(null); setCart([]); clearCustomer(); setManualDiscountValue(''); setWholesaleMode(false); }}
+                  className="ml-auto text-xs text-slate-400 hover:text-red-400">Cancel</button>
+              </div>
+            )}
             <section className="mb-5">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Cart ({cart.length})
