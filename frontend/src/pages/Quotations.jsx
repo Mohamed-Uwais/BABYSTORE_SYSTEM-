@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import client from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Quotation from '../components/Quotation';
 
@@ -18,6 +19,7 @@ const STATUS_COLORS = {
 };
 
 export default function Quotations() {
+  const { user } = useAuth();
   const toast = useToast();
   const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,19 +50,26 @@ export default function Quotations() {
     setConverting(q.id);
     try {
       const items = typeof q.items === 'string' ? JSON.parse(q.items) : q.items;
+      const orderItems = items.map(i => ({
+        variant_id: i.variant_id,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        discount_amount: 0,
+      }));
+      const subtotal = orderItems.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
+      const discountTotal = Number(q.discount_total) || 0;
+      const deliveryFee = Number(q.delivery_fee) || 0;
+      const grandTotal = subtotal - discountTotal + deliveryFee;
       const res = await client.post('/orders/checkout', {
+        channel: 'pos',
         customer_id: q.customer_id,
-        payment_method: 'cash',
-        delivery_method: 'pickup',
+        cashier_id: user?.id || null,
         pricing_mode: q.pricing_mode,
-        delivery_fee: Number(q.delivery_fee) || 0,
-        manual_discount: Number(q.discount_total) || 0,
-        items: items.map(i => ({
-          variant_id: i.variant_id,
-          quantity: i.quantity,
-          unit_price: i.unit_price,
-          is_wholesale: q.pricing_mode === 'wholesale',
-        })),
+        fulfillment_type: 'pickup',
+        delivery_fee: deliveryFee,
+        discount_total: discountTotal,
+        items: orderItems,
+        payments: [{ payment_method: 'cash', amount: grandTotal }],
       });
       await client.patch(`/quotations/${q.id}/status`, { status: 'converted' });
       toast.success(`Order #${res.data.data?.order_id || ''} created from quotation`);
