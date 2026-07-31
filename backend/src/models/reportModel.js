@@ -4,6 +4,7 @@ async function salesReport({ from, to }) {
   const [orders] = await db.query(`
     SELECT o.id, o.order_number, o.created_at, o.channel, o.status,
            o.subtotal, o.discount_total, o.delivery_fee, o.grand_total,
+           COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r WHERE r.order_id = o.id), 0) AS refunded_amount,
            c.full_name AS customer_name, c.phone AS customer_phone,
            u.full_name AS cashier_name,
            (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS items_count,
@@ -17,16 +18,26 @@ async function salesReport({ from, to }) {
 
   const [[summary]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(subtotal - discount_total), 0) AS total_revenue,
+           COALESCE(SUM(subtotal - discount_total), 0)
+             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id
+                WHERE o2.created_at >= ? AND o2.created_at < DATE_ADD(?, INTERVAL 1 DAY)), 0) AS total_revenue,
            COALESCE(SUM(delivery_fee), 0) AS delivery_collected,
            COALESCE(SUM(discount_total), 0) AS total_discounts,
            COALESCE(AVG(subtotal - discount_total), 0) AS avg_order_value
     FROM orders
     WHERE created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
       AND status NOT IN ('cancelled')
+  `, [from, to, from, to]);
+
+  const [[refundSummary]] = await db.query(`
+    SELECT COUNT(DISTINCT r.order_id) AS refund_count,
+           COALESCE(SUM(r.refund_amount), 0) AS refund_total
+    FROM order_returns r
+    JOIN orders o ON o.id = r.order_id
+    WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
   `, [from, to]);
 
-  return { orders, summary };
+  return { orders, summary: { ...summary, ...refundSummary } };
 }
 
 async function creditReport() {
@@ -177,26 +188,30 @@ async function profitReport({ from, to }) {
     SELECT o.id, o.order_number, o.created_at, o.grand_total, o.status,
            c.full_name AS customer_name,
            COALESCE(SUM(oi.unit_price * oi.quantity), 0) AS revenue,
-           COALESCE(SUM(COALESCE(oi.cost_price_snapshot, pv.cost_price, 0) * oi.quantity), 0) AS cogs
+           COALESCE(SUM(COALESCE(oi.cost_price_snapshot, pv.cost_price, 0) * oi.quantity), 0) AS cogs,
+           COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r WHERE r.order_id = o.id), 0) AS refunded_amount
     FROM orders o
     LEFT JOIN customers c ON c.id = o.customer_id
     JOIN order_items oi ON oi.order_id = o.id
     JOIN product_variants pv ON pv.id = oi.variant_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status IN ('completed', 'delivered', 'partially_refunded')
+      AND o.status IN ('completed', 'delivered', 'partially_refunded', 'refunded')
     GROUP BY o.id
     ORDER BY o.created_at DESC
   `, [from, to]);
 
   const [[summary]] = await db.query(`
-    SELECT COALESCE(SUM(oi.unit_price * oi.quantity), 0) AS total_revenue,
+    SELECT COALESCE(SUM(oi.unit_price * oi.quantity), 0)
+             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id
+                WHERE o2.created_at >= ? AND o2.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+                  AND o2.status IN ('completed', 'delivered', 'partially_refunded', 'refunded')), 0) AS total_revenue,
            COALESCE(SUM(COALESCE(oi.cost_price_snapshot, pv.cost_price, 0) * oi.quantity), 0) AS total_cogs
     FROM orders o
     JOIN order_items oi ON oi.order_id = o.id
     JOIN product_variants pv ON pv.id = oi.variant_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status IN ('completed', 'delivered', 'partially_refunded')
-  `, [from, to]);
+      AND o.status IN ('completed', 'delivered', 'partially_refunded', 'refunded')
+  `, [from, to, from, to]);
 
   const grossProfit = summary.total_revenue - summary.total_cogs;
   const margin = summary.total_revenue > 0 ? (grossProfit / summary.total_revenue * 100) : 0;

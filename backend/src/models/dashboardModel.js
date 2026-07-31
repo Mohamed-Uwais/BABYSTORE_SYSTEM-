@@ -3,7 +3,8 @@ const db = require('../config/db');
 async function getSummary() {
   const [[todayStats]] = await db.query(`
     SELECT COUNT(*) AS orders_today,
-           COALESCE(SUM(subtotal - discount_total), 0) AS revenue_today,
+           COALESCE(SUM(subtotal - discount_total), 0)
+             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id WHERE DATE(o2.created_at) = CURDATE()), 0) AS revenue_today,
            COALESCE(SUM(delivery_fee), 0) AS delivery_collected_today
     FROM orders
     WHERE DATE(created_at) = CURDATE() AND status NOT IN ('cancelled')
@@ -11,7 +12,8 @@ async function getSummary() {
 
   const [[weekStats]] = await db.query(`
     SELECT COUNT(*) AS orders_week,
-           COALESCE(SUM(subtotal - discount_total), 0) AS revenue_week,
+           COALESCE(SUM(subtotal - discount_total), 0)
+             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id WHERE o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0) AS revenue_week,
            COALESCE(SUM(delivery_fee), 0) AS delivery_collected_week
     FROM orders
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND status NOT IN ('cancelled')
@@ -19,14 +21,17 @@ async function getSummary() {
 
   const [[monthStats]] = await db.query(`
     SELECT COUNT(*) AS orders_month,
-           COALESCE(SUM(subtotal - discount_total), 0) AS revenue_month,
+           COALESCE(SUM(subtotal - discount_total), 0)
+             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id WHERE o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) AS revenue_month,
            COALESCE(SUM(delivery_fee), 0) AS delivery_collected_month
     FROM orders
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND status NOT IN ('cancelled')
   `);
 
   const [[prevMonthStats]] = await db.query(`
-    SELECT COALESCE(SUM(subtotal - discount_total), 0) AS revenue_prev_month
+    SELECT COALESCE(SUM(subtotal - discount_total), 0)
+             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id
+                WHERE o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY) AND o2.created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) AS revenue_prev_month
     FROM orders
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
       AND created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
@@ -65,14 +70,15 @@ async function getSummary() {
 
 async function getSalesChart(days = 30) {
   const [rows] = await db.query(`
-    SELECT DATE(created_at) AS date,
+    SELECT DATE(o.created_at) AS date,
            COUNT(*) AS orders,
-           COALESCE(SUM(subtotal - discount_total), 0) AS revenue,
-           COALESCE(SUM(delivery_fee), 0) AS delivery_collected
-    FROM orders
-    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-      AND status NOT IN ('cancelled')
-    GROUP BY DATE(created_at)
+           COALESCE(SUM(o.subtotal - o.discount_total), 0)
+             - COALESCE(SUM((SELECT COALESCE(SUM(r.refund_amount),0) FROM order_returns r WHERE r.order_id = o.id)), 0) AS revenue,
+           COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected
+    FROM orders o
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      AND o.status NOT IN ('cancelled')
+    GROUP BY DATE(o.created_at)
     ORDER BY date
   `, [days]);
 
@@ -90,7 +96,7 @@ async function getBestSellers(limit = 10) {
     JOIN products p ON p.id = pv.product_id
     JOIN orders o ON o.id = oi.order_id
     WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      AND o.status NOT IN ('cancelled')
+      AND o.status NOT IN ('cancelled', 'refunded')
     GROUP BY pv.id
     ORDER BY units_sold DESC
     LIMIT ?

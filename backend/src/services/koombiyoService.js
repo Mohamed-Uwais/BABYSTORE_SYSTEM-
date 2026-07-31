@@ -3,13 +3,29 @@ const BASE_URL = process.env.KOOMBIYO_API_BASE_URL || 'https://application.koomb
 
 async function koombiyoFetch(endpoint, body = {}) {
   if (!API_KEY) throw new Error('Koombiyo API key not configured');
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apikey: API_KEY, ...body }),
-  });
-  if (!res.ok) throw new Error(`Koombiyo API returned ${res.status}`);
-  const data = await res.json();
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apikey: API_KEY, ...body }),
+    });
+  } catch (err) {
+    console.error(`Koombiyo network error [${endpoint}]:`, err.message);
+    throw new Error(`Koombiyo API unreachable: ${err.message}`);
+  }
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    console.error(`Koombiyo non-JSON response [${endpoint}] (${res.status}):`, text.substring(0, 500));
+    throw new Error(`Koombiyo returned non-JSON (HTTP ${res.status})`);
+  }
+  if (!res.ok) {
+    console.error(`Koombiyo API error [${endpoint}] (${res.status}):`, JSON.stringify(data));
+    throw new Error(data.message || data.error || `Koombiyo API returned ${res.status}`);
+  }
   return data;
 }
 

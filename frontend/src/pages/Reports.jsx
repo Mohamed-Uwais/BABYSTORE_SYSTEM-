@@ -92,10 +92,11 @@ function SalesReport() {
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
       <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} onExport={() => exportCSV(orders, `sales-${from}-${to}`)} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatCard label="Total Orders" value={summary.total_orders} color="brand" />
-        <StatCard label="Total Revenue" value={money(summary.total_revenue)} color="emerald" />
+        <StatCard label="Net Revenue" value={money(summary.total_revenue)} color="emerald" />
         <StatCard label="Total Discounts" value={money(summary.total_discounts)} color="amber" />
+        <StatCard label="Refunds" value={`${summary.refund_count || 0} / ${money(summary.refund_total || 0)}`} color="red" />
         <StatCard label="Avg Order Value" value={money(summary.avg_order_value)} color="cyan" />
       </div>
       {chartData.length > 1 && (
@@ -571,7 +572,7 @@ function OrdersTable({ orders }) {
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-            <th className="px-4 py-2">Order #</th><th className="px-4 py-2">Customer</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Items</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2">Date</th>
+            <th className="px-4 py-2">Order #</th><th className="px-4 py-2">Customer</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Items</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-right">Refunded</th><th className="px-4 py-2">Date</th>
           </tr></thead>
           <tbody>
             {orders.slice(0, 50).map(o => (
@@ -581,6 +582,7 @@ function OrdersTable({ orders }) {
                 <td className="px-4 py-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BG[o.status] || ''}`}>{o.status}</span></td>
                 <td className="px-4 py-2 font-mono text-slate-500 dark:text-slate-400">{o.items_count}</td>
                 <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900 dark:text-white">{money(o.grand_total)}</td>
+                <td className="px-4 py-2 text-right font-mono text-xs">{Number(o.refunded_amount) > 0 ? <span className="font-semibold text-red-600 dark:text-red-400">-{money(o.refunded_amount)}</span> : <span className="text-slate-300 dark:text-slate-600">—</span>}</td>
                 <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{new Date(o.created_at).toLocaleDateString()}</td>
               </tr>
             ))}

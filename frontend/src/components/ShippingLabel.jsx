@@ -9,28 +9,24 @@ function money(n) {
 export default function ShippingLabel({ order, onClose }) {
   const [settings, setSettings] = useState(null);
   const barcodeRef = useRef(null);
+  const trackingBarcodeRef = useRef(null);
 
   useEffect(() => {
     client.get('/settings').then(r => setSettings(r.data.data)).catch(() => {});
   }, []);
 
+  const delivery = order?.delivery || order || {};
+  const trackingNum = delivery.tracking_number || '';
+
   useEffect(() => {
+    const opts = { format: 'CODE128', width: 1.5, height: 40, displayValue: true, fontSize: 12, font: 'monospace', margin: 5, background: '#ffffff', lineColor: '#000000' };
     if (barcodeRef.current && order?.order_number) {
-      try {
-        JsBarcode(barcodeRef.current, order.order_number, {
-          format: 'CODE128',
-          width: 1.5,
-          height: 40,
-          displayValue: true,
-          fontSize: 12,
-          font: 'monospace',
-          margin: 5,
-          background: '#ffffff',
-          lineColor: '#000000',
-        });
-      } catch {}
+      try { JsBarcode(barcodeRef.current, order.order_number, opts); } catch {}
     }
-  }, [order, settings]);
+    if (trackingBarcodeRef.current && trackingNum) {
+      try { JsBarcode(trackingBarcodeRef.current, trackingNum, { ...opts, height: 50, fontSize: 14 }); } catch {}
+    }
+  }, [order, settings, trackingNum]);
 
   function printLabel() {
     const content = document.getElementById('shipping-label-print');
@@ -39,15 +35,16 @@ export default function ShippingLabel({ order, onClose }) {
     const barcodeDataUrl = barcodeRef.current?.toDataURL?.() ||
       (barcodeRef.current?.querySelector?.('image')?.href?.baseVal) || '';
 
-    let barcodeHtml = '';
-    if (barcodeRef.current?.tagName === 'svg' || barcodeRef.current?.tagName === 'SVG') {
-      barcodeHtml = barcodeRef.current.outerHTML;
-    } else if (barcodeRef.current?.toDataURL) {
-      barcodeHtml = `<img src="${barcodeRef.current.toDataURL()}" style="max-width:100%;" />`;
+    function getSvgHtml(ref) {
+      if (!ref) return '';
+      if (ref.tagName === 'svg' || ref.tagName === 'SVG') return ref.outerHTML;
+      if (ref.toDataURL) return `<img src="${ref.toDataURL()}" style="max-width:100%;" />`;
+      return '';
     }
+    const barcodeHtml = getSvgHtml(barcodeRef.current);
+    const trackingBarcodeHtml = getSvgHtml(trackingBarcodeRef.current);
 
     const store = settings || {};
-    const delivery = order.delivery || order;
     const isPaid = !order.delivery_fee || order.delivery_fee <= 0;
     const totalItems = order.items?.reduce((s, i) => s + (i.quantity || 1), 0) || 0;
 
@@ -61,6 +58,10 @@ export default function ShippingLabel({ order, onClose }) {
   .header { text-align: center; padding: 3mm 3mm 2mm; border-bottom: 2px solid #000; }
   .header h1 { font-size: 16px; margin-bottom: 1px; }
   .header p { font-size: 9px; color: #555; }
+  .tracking-bar { text-align: center; padding: 2mm 3mm; border-bottom: 2px solid #000; background: #000; }
+  .tracking-bar .label-text { font-size: 7px; text-transform: uppercase; letter-spacing: 1px; color: #999; }
+  .tracking-bar .number { font-family: monospace; font-size: 18px; font-weight: 900; letter-spacing: 2px; color: #fff; }
+  .tracking-bar .courier { font-size: 8px; color: #999; }
   .order-bar { display: flex; justify-content: space-between; align-items: center; padding: 2mm 3mm; border-bottom: 1px solid #000; }
   .order-num { font-family: monospace; font-size: 15px; font-weight: bold; }
   .cod-badge { font-size: 13px; font-weight: bold; padding: 1mm 3mm; border: 2px solid; border-radius: 3px; }
@@ -84,6 +85,11 @@ export default function ShippingLabel({ order, onClose }) {
     <h1>${store.store_name || 'LITTORA'}</h1>
     <p>${[store.phone, store.address_line1, store.city].filter(Boolean).join(' · ')}</p>
   </div>
+  ${trackingNum ? `<div class="tracking-bar">
+    <p class="label-text">Tracking / Waybill</p>
+    <p class="number">${trackingNum}</p>
+    ${delivery.courier_name ? `<p class="courier">${delivery.courier_name}</p>` : ''}
+  </div>` : ''}
   <div class="order-bar">
     <span class="order-num">${order.order_number}</span>
     <span class="cod-badge ${isPaid ? 'paid' : 'cod'}">${isPaid ? 'PAID' : 'COD ' + money(order.grand_total)}</span>
@@ -104,7 +110,7 @@ export default function ShippingLabel({ order, onClose }) {
     <span><strong>${totalItems}</strong> units</span>
     <span>Total: <strong>${money(order.grand_total)}</strong></span>
   </div>
-  <div class="barcode">${barcodeHtml}</div>
+  <div class="barcode">${trackingNum ? trackingBarcodeHtml : barcodeHtml}</div>
 </div>
 </body></html>`);
     win.document.close();
@@ -112,7 +118,6 @@ export default function ShippingLabel({ order, onClose }) {
   }
 
   if (!order) return null;
-  const delivery = order.delivery || order;
   const store = settings || {};
   const isPaid = !order.delivery_fee || order.delivery_fee <= 0;
   const totalItems = order.items?.reduce((s, i) => s + (i.quantity || 1), 0) || 0;
@@ -136,6 +141,15 @@ export default function ShippingLabel({ order, onClose }) {
             <h3 className="text-base font-bold text-slate-900 dark:text-white">{store.store_name || 'LITTORA'}</h3>
             <p className="text-[10px] text-slate-500">{[store.phone, store.address_line1, store.city].filter(Boolean).join(' · ')}</p>
           </div>
+
+          {/* Tracking Number (if available) */}
+          {(delivery.tracking_number) && (
+            <div className="border-b-2 border-slate-900 bg-slate-900 px-4 py-2 text-center dark:border-slate-300 dark:bg-slate-100">
+              <p className="text-[8px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">Tracking / Waybill</p>
+              <p className="font-mono text-lg font-black tracking-wider text-white dark:text-slate-900">{delivery.tracking_number}</p>
+              {delivery.courier_name && <p className="text-[9px] font-medium text-slate-400 dark:text-slate-500">{delivery.courier_name}</p>}
+            </div>
+          )}
 
           {/* Order + COD */}
           <div className="flex items-center justify-between border-b border-slate-300 px-4 py-2 dark:border-slate-600">
@@ -177,10 +191,15 @@ export default function ShippingLabel({ order, onClose }) {
             <span className="text-slate-500">Total: <b className="font-mono text-slate-700 dark:text-slate-300">{money(order.grand_total)}</b></span>
           </div>
 
-          {/* Barcode */}
+          {/* Barcode — tracking number if available, otherwise order number */}
           <div className="px-4 py-3 text-center">
-            <svg ref={barcodeRef} className="mx-auto" />
+            {trackingNum ? (
+              <svg ref={trackingBarcodeRef} className="mx-auto" />
+            ) : (
+              <svg ref={barcodeRef} className="mx-auto" />
+            )}
           </div>
+          {trackingNum && <svg ref={barcodeRef} className="hidden" />}
         </div>
       </div>
     </div>

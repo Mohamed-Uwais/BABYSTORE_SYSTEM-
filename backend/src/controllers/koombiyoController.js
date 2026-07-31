@@ -1,27 +1,30 @@
 const koombiyo = require('../services/koombiyoService');
 const db = require('../config/db');
-const whatsapp = require('../utils/whatsappSender');
+const notifier = require('../utils/orderNotifier');
 
 async function createWaybill(req, res) {
   try {
     const { order_id } = req.body;
     const [[order]] = await db.query(
-      `SELECT o.order_number, o.delivery_address, d.receiver_name, d.receiver_phone, d.receiver_address
-       FROM orders o LEFT JOIN deliveries d ON d.order_id = o.id WHERE o.id = ?`, [order_id]
+      `SELECT o.order_number, o.grand_total, o.delivery_fee, o.delivery_address,
+              od.receiver_name, od.receiver_phone, od.receiver_address
+       FROM orders o LEFT JOIN order_deliveries od ON od.order_id = o.id WHERE o.id = ?`, [order_id]
     );
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
+    const codAmount = Number(order.grand_total) || 0;
     const result = await koombiyo.createWaybill({
       orderNumber: order.order_number,
       receiverName: order.receiver_name || 'Customer',
       receiverPhone: order.receiver_phone || '',
       receiverAddress: order.receiver_address || order.delivery_address || '',
       description: `Order ${order.order_number}`,
+      codAmount,
     });
 
     if (result.waybill_no) {
       await db.query(
-        `UPDATE deliveries SET tracking_number = ?, courier_id = (SELECT id FROM couriers WHERE code = 'koombiyo' LIMIT 1), status = 'shipped' WHERE order_id = ?`,
+        `UPDATE order_deliveries SET tracking_number = ?, courier_id = (SELECT id FROM couriers WHERE code = 'koombiyo' LIMIT 1), delivery_status = 'shipped' WHERE order_id = ?`,
         [result.waybill_no, order_id]
       );
       await db.query(`UPDATE orders SET status = 'shipped' WHERE id = ? AND status = 'processing'`, [order_id]);
@@ -29,8 +32,9 @@ async function createWaybill(req, res) {
 
     res.json({ success: true, data: result });
   } catch (error) {
-    console.error('Koombiyo createWaybill error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Koombiyo createWaybill error:', error.response?.data || error.message);
+    const msg = error.response?.data?.message || error.message || 'Koombiyo API error';
+    res.status(500).json({ success: false, message: `Koombiyo API error: ${msg}` });
   }
 }
 
@@ -40,8 +44,8 @@ async function trackOrder(req, res) {
     const result = await koombiyo.trackOrder(waybill_no);
     res.json({ success: true, data: result });
   } catch (error) {
-    console.error('Koombiyo track error:', error.message);
-    res.status(502).json({ success: false, message: 'Tracking unavailable, try again later' });
+    console.error('Koombiyo track error:', error.response?.data || error.message);
+    res.status(502).json({ success: false, message: `Koombiyo tracking error: ${error.message}` });
   }
 }
 
@@ -51,13 +55,13 @@ async function cancelShipment(req, res) {
     const result = await koombiyo.cancelWaybill(waybill_no);
     if (result.status === 'success' || result.success) {
       await db.query(
-        `UPDATE deliveries SET status = 'cancelled' WHERE tracking_number = ?`, [waybill_no]
+        `UPDATE order_deliveries SET delivery_status = 'cancelled' WHERE tracking_number = ?`, [waybill_no]
       );
     }
     res.json({ success: true, data: result });
   } catch (error) {
-    console.error('Koombiyo cancel error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Koombiyo cancel error:', error.response?.data || error.message);
+    res.status(500).json({ success: false, message: `Koombiyo API error: ${error.message}` });
   }
 }
 
@@ -105,28 +109,7 @@ async function webhook(req, res) {
       [delivery.order_id, mappedStatus, `Koombiyo: ${status} (tracking: ${waybill_no})`]
     );
 
-    // WhatsApp notification to customer
-    try {
-      const [[order]] = await db.query(
-        `SELECT o.order_number, c.phone, c.full_name FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`,
-        [delivery.order_id]
-      );
-      if (order?.phone && whatsapp.isConfigured()) {
-        const PUBLIC_URL = process.env.PUBLIC_URL || 'https://littora.lk';
-        const trackUrl = `${PUBLIC_URL}/track?order=${order.order_number}`;
-        const messages = {
-          in_transit: `Hi ${order.full_name || 'there'}! Your order ${order.order_number} has been dispatched via Koombiyo. Track it here: ${trackUrl}`,
-          out_for_delivery: `Great news! Your order ${order.order_number} is out for delivery today. Track: ${trackUrl}`,
-          delivered: `Your order ${order.order_number} has been delivered! Thank you for shopping with LITTORA.`,
-          returned: `Your order ${order.order_number} was returned by the courier. Please contact us for assistance.`,
-        };
-        if (messages[mappedStatus]) {
-          await whatsapp.sendText(order.phone, messages[mappedStatus]);
-        }
-      }
-    } catch (waErr) {
-      console.error('WhatsApp notification failed:', waErr.message);
-    }
+    notifier.notifyStatusChange(delivery.order_id, mappedStatus, 'Koombiyo', waybill_no);
 
     res.json({ success: true });
   } catch (error) {

@@ -55,3 +55,8 @@ FROM customers WHERE credit_balance != 0 OR loyalty_points_balance != 0;
 
 SELECT 'Orders with corrected status' AS fix;
 SELECT id, order_number, status FROM orders WHERE status IN ('refunded', 'partially_refunded');
+
+-- WhatsApp notification settings columns (skip if already exist)
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='store_settings' AND COLUMN_NAME='wa_notify_confirmed');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE store_settings ADD COLUMN wa_notify_confirmed TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN wa_notify_shipped TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN wa_notify_delivered TINYINT(1) NOT NULL DEFAULT 1', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

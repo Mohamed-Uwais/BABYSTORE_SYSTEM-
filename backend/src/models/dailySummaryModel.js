@@ -10,12 +10,14 @@ async function getDailySummary(date) {
   // 1. Sales overview
   const [[todayStats]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(subtotal - discount_total), 0) AS total_revenue,
+           COALESCE(SUM(subtotal - discount_total), 0)
+             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id
+                WHERE o2.created_at >= ? AND o2.created_at < ?), 0) AS total_revenue,
            COALESCE(SUM(delivery_fee), 0) AS delivery_collected,
            COALESCE(AVG(subtotal - discount_total), 0) AS avg_order_value
     FROM orders
     WHERE created_at >= ? AND created_at < ? AND status NOT IN ('cancelled')
-  `, [dateStr, nextDate]);
+  `, [dateStr, nextDate, dateStr, nextDate]);
 
   const [[yesterdayStats]] = await db.query(`
     SELECT COUNT(*) AS total_orders,

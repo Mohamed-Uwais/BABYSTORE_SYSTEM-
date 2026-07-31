@@ -1,6 +1,6 @@
 const orderModel = require('../models/orderModel');
 const db = require('../config/db');
-const whatsapp = require('../utils/whatsappSender');
+const notifier = require('../utils/orderNotifier');
 
 async function checkout(req, res) {
   try {
@@ -109,19 +109,7 @@ async function getPendingOrders(req, res) {
 async function acceptOrder(req, res) {
   try {
     await orderModel.acceptOrder(parseInt(req.params.id), req.user?.id);
-    // WhatsApp notification
-    try {
-      const [[o]] = await db.query(
-        `SELECT o.order_number, c.phone, c.full_name FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`,
-        [req.params.id]
-      );
-      if (o?.phone && whatsapp.isConfigured()) {
-        const PUBLIC_URL = process.env.PUBLIC_URL || 'https://littora.lk';
-        await whatsapp.sendText(o.phone,
-          `Hi ${o.full_name || 'there'}! Great news — your order ${o.order_number} has been confirmed and is being prepared. Track it here: ${PUBLIC_URL}/track?order=${o.order_number}`
-        );
-      }
-    } catch (e) { console.error('WhatsApp accept notify failed:', e.message); }
+    notifier.notifyConfirmed(parseInt(req.params.id));
     res.json({ success: true, message: 'Order accepted' });
   } catch (error) {
     console.error(error);
@@ -132,17 +120,7 @@ async function acceptOrder(req, res) {
 async function rejectOrder(req, res) {
   try {
     await orderModel.rejectOrder(parseInt(req.params.id), req.user?.id, req.body.reason);
-    try {
-      const [[o]] = await db.query(
-        `SELECT o.order_number, c.phone, c.full_name FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`,
-        [req.params.id]
-      );
-      if (o?.phone && whatsapp.isConfigured()) {
-        await whatsapp.sendText(o.phone,
-          `Hi ${o.full_name || 'there'}, we're sorry but your order ${o.order_number} could not be processed.${req.body.reason ? ` Reason: ${req.body.reason}` : ''} Please contact us if you need help.`
-        );
-      }
-    } catch (e) { console.error('WhatsApp reject notify failed:', e.message); }
+    notifier.notifyRejected(parseInt(req.params.id), req.body.reason);
     res.json({ success: true, message: 'Order rejected' });
   } catch (error) {
     console.error(error);

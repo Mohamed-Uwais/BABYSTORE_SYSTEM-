@@ -165,6 +165,7 @@ export default function Settings() {
               {saving ? 'Saving...' : 'Save settings'}
             </button>
           </form>
+          <WhatsAppNotifications settings={form} onUpdate={setForm} />
           <UserManagement />
           <DeliveryZones />
           <WeightTiers />
@@ -173,6 +174,57 @@ export default function Settings() {
         </motion.div>
       </div>
     </PageWrapper>
+  );
+}
+
+function WhatsAppNotifications({ settings, onUpdate }) {
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+
+  const toggles = [
+    { key: 'wa_notify_confirmed', label: 'Order Confirmed', desc: 'When owner accepts a website/chatbot order' },
+    { key: 'wa_notify_shipped', label: 'Order Shipped', desc: 'When order is dispatched via courier' },
+    { key: 'wa_notify_delivered', label: 'Order Delivered', desc: 'When courier marks order as delivered' },
+  ];
+
+  async function toggle(key) {
+    const newVal = settings[key] === 0 ? 1 : 0;
+    setSaving(true);
+    try {
+      const res = await client.put('/settings', { [key]: newVal });
+      onUpdate(res.data.data);
+      toast.success(`${newVal ? 'Enabled' : 'Disabled'} notification`);
+    } catch { toast.error('Failed to update'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="text-lg">💬</span>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">WhatsApp Notifications</h2>
+      </div>
+      <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+        Auto-send WhatsApp messages to customers on order status changes. Requires WhatsApp Cloud API to be connected.
+      </p>
+      <div className="space-y-3">
+        {toggles.map(t => (
+          <div key={t.key} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2.5 dark:border-slate-800">
+            <div>
+              <span className="text-sm font-medium text-slate-900 dark:text-white">{t.label}</span>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t.desc}</p>
+            </div>
+            <button
+              onClick={() => toggle(t.key)}
+              disabled={saving}
+              className={`relative h-6 w-11 rounded-full transition-colors ${settings[t.key] === 0 ? 'bg-slate-300 dark:bg-slate-600' : 'bg-emerald-500'}`}
+            >
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${settings[t.key] === 0 ? 'left-0.5' : 'left-[22px]'}`} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

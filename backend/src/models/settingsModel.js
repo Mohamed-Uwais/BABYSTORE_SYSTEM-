@@ -9,6 +9,7 @@ async function updateSettings(data) {
   const fields = [
     'store_name', 'address_line1', 'address_line2', 'city',
     'phone', 'email', 'tax_id', 'currency_symbol', 'receipt_footer', 'logo_url',
+    'wa_notify_confirmed', 'wa_notify_shipped', 'wa_notify_delivered',
   ];
   const sets = [];
   const params = [];
