@@ -40,6 +40,7 @@ async function call(conversationHistory, customerContext) {
   let iterations = 0;
   const MAX_TOOL_ITERATIONS = 5;
   const collectedImages = [];
+  const knownProducts = new Set();
 
   while (response.stop_reason === 'tool_use' && iterations < MAX_TOOL_ITERATIONS) {
     iterations++;
@@ -51,10 +52,16 @@ async function call(conversationHistory, customerContext) {
       const result = await toolExecutor.execute(block.name, block.input);
       if (block.name === 'search_products' && result.products) {
         for (const p of result.products) {
+          knownProducts.add(p.name.toLowerCase());
+          if (p.variant) knownProducts.add(`${p.name} ${p.variant}`.toLowerCase());
+          if (p.brand) knownProducts.add(p.brand.toLowerCase());
           if (p.image_url && collectedImages.length < 3) {
             collectedImages.push({ url: p.image_url, caption: `${p.name} — Rs. ${Number(p.discounted_price || p.price).toLocaleString()}` });
           }
         }
+      }
+      if (block.name === 'check_stock' && result.name) {
+        knownProducts.add(result.name.toLowerCase());
       }
       toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
     }
@@ -74,7 +81,7 @@ async function call(conversationHistory, customerContext) {
   const textBlocks = response.content.filter(b => b.type === 'text');
   const text = textBlocks.map(b => b.text).join('\n');
   if (!text) throw new Error('Empty response from Claude');
-  return { text, images: collectedImages };
+  return { text, images: collectedImages, knownProducts };
 }
 
 module.exports = { call };

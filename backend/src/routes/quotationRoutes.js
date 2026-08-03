@@ -6,5 +6,6 @@ router.get('/', c.getAll);
 router.get('/:id', c.getById);
 router.post('/', c.create);
 router.patch('/:id/status', c.updateStatus);
+router.post('/:id/convert', c.markConverted);
 
 module.exports = router;

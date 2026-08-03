@@ -24,10 +24,12 @@ async function create({ customer_id, pricing_mode, items, subtotal, delivery_fee
 
 async function getAll() {
   const [rows] = await db.query(`
-    SELECT q.*, c.full_name AS customer_name, c.phone AS customer_phone, u.full_name AS created_by_name
+    SELECT q.*, c.full_name AS customer_name, c.phone AS customer_phone, u.full_name AS created_by_name,
+           o.order_number AS converted_order_number
     FROM quotations q
     LEFT JOIN customers c ON c.id = q.customer_id
     LEFT JOIN users u ON u.id = q.created_by
+    LEFT JOIN orders o ON o.id = q.converted_order_id
     ORDER BY q.created_at DESC
   `);
   return rows;
@@ -35,17 +37,40 @@ async function getAll() {
 
 async function getById(id) {
   const [[row]] = await db.query(`
-    SELECT q.*, c.full_name AS customer_name, c.phone AS customer_phone, u.full_name AS created_by_name
+    SELECT q.*, c.full_name AS customer_name, c.phone AS customer_phone, u.full_name AS created_by_name,
+           o.order_number AS converted_order_number
     FROM quotations q
     LEFT JOIN customers c ON c.id = q.customer_id
     LEFT JOIN users u ON u.id = q.created_by
+    LEFT JOIN orders o ON o.id = q.converted_order_id
     WHERE q.id = ?
   `, [id]);
   return row || null;
 }
 
+const VALID_STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired', 'converted', 'cancelled'];
+
 async function updateStatus(id, status) {
+  if (!VALID_STATUSES.includes(status)) {
+    throw new Error(`Invalid status: ${status}`);
+  }
+  if (status === 'converted') {
+    throw new Error('Use the conversion endpoint to convert quotations');
+  }
   await db.query('UPDATE quotations SET status = ? WHERE id = ?', [status, id]);
 }
 
-module.exports = { create, getAll, getById, updateStatus };
+async function markConverted(quotationId, orderId) {
+  const [[q]] = await db.query('SELECT id, status, quotation_number, converted_order_id FROM quotations WHERE id = ? FOR UPDATE', [quotationId]);
+  if (!q) throw new Error('Quotation not found');
+  if (q.status === 'converted') {
+    const [[existingOrder]] = await db.query('SELECT order_number FROM orders WHERE id = ?', [q.converted_order_id]);
+    throw new Error(`This quotation has already been converted to order ${existingOrder?.order_number || q.converted_order_id}`);
+  }
+  if (['rejected', 'cancelled'].includes(q.status)) {
+    throw new Error(`Cannot convert a ${q.status} quotation`);
+  }
+  await db.query('UPDATE quotations SET status = ?, converted_order_id = ? WHERE id = ?', ['converted', orderId, quotationId]);
+}
+
+module.exports = { create, getAll, getById, updateStatus, markConverted };

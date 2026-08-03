@@ -710,7 +710,14 @@ export default function Billing() {
       const res = await client.post('/orders/checkout', payload);
       const orderData = res.data.data;
       if (fromQuotation) {
-        client.patch(`/quotations/${fromQuotation.id}/status`, { status: 'converted' }).catch(() => {});
+        try {
+          await client.post(`/quotations/${fromQuotation.id}/convert`, { order_id: orderData.orderId });
+        } catch (convErr) {
+          const msg = convErr.response?.data?.message || '';
+          if (msg.includes('already been converted')) {
+            toast.warning(msg);
+          }
+        }
         setFromQuotation(null);
       }
       setSuccessOrder(orderData);

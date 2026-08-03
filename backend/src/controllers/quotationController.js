@@ -37,3 +37,15 @@ exports.updateStatus = async (req, res) => {
     res.status(400).json({ success: false, message: err.message });
   }
 };
+
+exports.markConverted = async (req, res) => {
+  try {
+    const { order_id } = req.body;
+    if (!order_id) return res.status(400).json({ success: false, message: 'order_id is required' });
+    await quotationModel.markConverted(parseInt(req.params.id), parseInt(order_id));
+    res.json({ success: true });
+  } catch (err) {
+    const status = err.message.includes('already been converted') ? 409 : 400;
+    res.status(status).json({ success: false, message: err.message });
+  }
+};

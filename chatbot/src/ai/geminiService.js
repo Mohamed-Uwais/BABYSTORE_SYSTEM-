@@ -41,6 +41,7 @@ async function call(conversationHistory, customerContext) {
   let iterations = 0;
   const MAX_TOOL_ITERATIONS = 5;
   const collectedImages = [];
+  const knownProducts = new Set();
 
   while (iterations < MAX_TOOL_ITERATIONS) {
     const functionCalls = response.functionCalls();
@@ -54,10 +55,16 @@ async function call(conversationHistory, customerContext) {
       const toolResult = await toolExecutor.execute(fc.name, fc.args);
       if (fc.name === 'search_products' && toolResult.products) {
         for (const p of toolResult.products) {
+          knownProducts.add(p.name.toLowerCase());
+          if (p.variant) knownProducts.add(`${p.name} ${p.variant}`.toLowerCase());
+          if (p.brand) knownProducts.add(p.brand.toLowerCase());
           if (p.image_url && collectedImages.length < 3) {
             collectedImages.push({ url: p.image_url, caption: `${p.name} — Rs. ${Number(p.discounted_price || p.price).toLocaleString()}` });
           }
         }
+      }
+      if (fc.name === 'check_stock' && toolResult.name) {
+        knownProducts.add(toolResult.name.toLowerCase());
       }
       toolResults.push({
         functionResponse: { name: fc.name, response: toolResult },
@@ -70,7 +77,7 @@ async function call(conversationHistory, customerContext) {
 
   const text = response.text();
   if (!text) throw new Error('Empty response from Gemini');
-  return { text, images: collectedImages };
+  return { text, images: collectedImages, knownProducts };
 }
 
 module.exports = { call };
