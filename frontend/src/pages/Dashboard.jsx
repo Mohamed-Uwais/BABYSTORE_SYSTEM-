@@ -122,6 +122,26 @@ export default function Dashboard() {
           ))}
         </motion.div>
 
+        {/* Courier Settlement Alerts */}
+        {summary?.courier_alerts?.length > 0 && (
+          <div className="mb-6 space-y-2">
+            {summary.courier_alerts.map(a => (
+              <motion.div key={a.courier_code} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-900/20">
+                <span className="text-xl">&#9888;</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    {a.courier_name} owes Rs. {Number(a.outstanding).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {a.unsettled_orders} unsettled order{a.unsettled_orders !== 1 ? 's' : ''}{a.days_pending > 0 ? `, oldest ${a.days_pending} days ago` : ''}
+                  </p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
         {/* Revenue Chart + Payment Methods */}
         <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="col-span-1 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-800 lg:col-span-2">

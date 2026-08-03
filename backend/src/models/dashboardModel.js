@@ -1,41 +1,45 @@
 const db = require('../config/db');
 
 async function getSummary() {
+  // Revenue = item-level (qty * unit_price - discount_amount), settled statuses only, minus returned revenue
+  const revenueSubquery = `(
+    SELECT COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0)
+           - COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
+              FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id
+              WHERE r.order_id = o.id), 0)
+    FROM order_items oi WHERE oi.order_id = o.id
+  )`;
+
   const [[todayStats]] = await db.query(`
     SELECT COUNT(*) AS orders_today,
-           COALESCE(SUM(subtotal - discount_total), 0)
-             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id WHERE DATE(o2.created_at) = CURDATE()), 0) AS revenue_today,
-           COALESCE(SUM(delivery_fee), 0) AS delivery_collected_today
-    FROM orders
-    WHERE DATE(created_at) = CURDATE() AND status NOT IN ('cancelled')
+           COALESCE(SUM(${revenueSubquery}), 0) AS revenue_today,
+           COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected_today
+    FROM orders o
+    WHERE DATE(o.created_at) = CURDATE() AND o.status IN ('completed','delivered','partially_refunded')
   `);
 
   const [[weekStats]] = await db.query(`
     SELECT COUNT(*) AS orders_week,
-           COALESCE(SUM(subtotal - discount_total), 0)
-             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id WHERE o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)), 0) AS revenue_week,
-           COALESCE(SUM(delivery_fee), 0) AS delivery_collected_week
-    FROM orders
-    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND status NOT IN ('cancelled')
+           COALESCE(SUM(${revenueSubquery}), 0) AS revenue_week,
+           COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected_week
+    FROM orders o
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND o.status IN ('completed','delivered','partially_refunded')
   `);
 
   const [[monthStats]] = await db.query(`
     SELECT COUNT(*) AS orders_month,
-           COALESCE(SUM(subtotal - discount_total), 0)
-             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id WHERE o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) AS revenue_month,
-           COALESCE(SUM(delivery_fee), 0) AS delivery_collected_month
-    FROM orders
-    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND status NOT IN ('cancelled')
+           COALESCE(SUM(${revenueSubquery}), 0) AS revenue_month,
+           COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected_month
+    FROM orders o
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status IN ('completed','delivered','partially_refunded')
   `);
 
   const [[prevMonthStats]] = await db.query(`
-    SELECT COALESCE(SUM(subtotal - discount_total), 0)
-             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id
-                WHERE o2.created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY) AND o2.created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 0) AS revenue_prev_month
-    FROM orders
-    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
-      AND created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      AND status NOT IN ('cancelled')
+    SELECT COALESCE(SUM(${revenueSubquery}), 0) AS revenue_prev_month
+    FROM orders o
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
+      AND o.created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      AND o.status IN ('completed','delivered','partially_refunded')
   `);
 
   const [[customerCount]] = await db.query('SELECT COUNT(*) AS total FROM customers');
@@ -57,6 +61,15 @@ async function getSummary() {
     ? ((monthStats.revenue_month - prevMonthStats.revenue_prev_month) / prevMonthStats.revenue_prev_month * 100).toFixed(1)
     : null;
 
+  const [courierAlerts] = await db.query(`
+    SELECT c.full_name AS courier_name, c.phone AS courier_code, c.credit_balance AS outstanding,
+           (SELECT COUNT(*) FROM order_deliveries od JOIN orders o ON o.id = od.order_id JOIN couriers cr ON cr.id = od.courier_id
+            WHERE cr.code = LOWER(c.phone) AND od.settled = FALSE AND o.status NOT IN ('cancelled')) AS unsettled_orders,
+           (SELECT MIN(o2.created_at) FROM order_deliveries od2 JOIN orders o2 ON o2.id = od2.order_id JOIN couriers cr2 ON cr2.id = od2.courier_id
+            WHERE cr2.code = LOWER(c.phone) AND od2.settled = FALSE AND o2.status NOT IN ('cancelled')) AS oldest_pending
+    FROM customers c WHERE c.phone IN ('KOOMBIYO', 'FARDAR') AND c.credit_balance > 0
+  `);
+
   return {
     today: { orders: todayStats.orders_today, revenue: Number(todayStats.revenue_today), delivery_collected: Number(todayStats.delivery_collected_today) },
     week: { orders: weekStats.orders_week, revenue: Number(weekStats.revenue_week), delivery_collected: Number(weekStats.delivery_collected_week) },
@@ -65,6 +78,13 @@ async function getSummary() {
     active_products: productCount.total,
     low_stock_count: lowStockCount.total,
     refunds_month: { count: refundStats.refunds_month, total: Number(refundStats.refund_total_month) },
+    courier_alerts: courierAlerts.map(a => ({
+      courier_name: a.courier_name,
+      courier_code: a.courier_code,
+      outstanding: Number(a.outstanding),
+      unsettled_orders: a.unsettled_orders,
+      days_pending: a.oldest_pending ? Math.floor((Date.now() - new Date(a.oldest_pending).getTime()) / 86400000) : 0,
+    })),
   };
 }
 
@@ -72,12 +92,14 @@ async function getSalesChart(days = 30) {
   const [rows] = await db.query(`
     SELECT DATE(o.created_at) AS date,
            COUNT(*) AS orders,
-           COALESCE(SUM(o.subtotal - o.discount_total), 0)
-             - COALESCE(SUM((SELECT COALESCE(SUM(r.refund_amount),0) FROM order_returns r WHERE r.order_id = o.id)), 0) AS revenue,
+           COALESCE(SUM(
+             (SELECT COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0) FROM order_items oi WHERE oi.order_id = o.id)
+             - COALESCE((SELECT SUM(r.quantity * oi2.unit_price) FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id WHERE r.order_id = o.id), 0)
+           ), 0) AS revenue,
            COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected
     FROM orders o
     WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-      AND o.status NOT IN ('cancelled')
+      AND o.status IN ('completed','delivered','partially_refunded')
     GROUP BY DATE(o.created_at)
     ORDER BY date
   `, [days]);

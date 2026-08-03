@@ -20,6 +20,7 @@ const COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'
 const TABS = [
   { key: 'sales', label: 'Sales' },
   { key: 'profit', label: 'Profit' },
+  { key: 'settlements', label: 'Settlements' },
   { key: 'stock', label: 'Stock' },
   { key: 'customers', label: 'Customers' },
   { key: 'credit', label: 'Credit' },
@@ -92,12 +93,13 @@ function SalesReport() {
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
       <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} onExport={() => exportCSV(orders, `sales-${from}-${to}`)} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Total Orders" value={summary.total_orders} color="brand" />
-        <StatCard label="Net Revenue" value={money(summary.total_revenue)} color="emerald" />
-        <StatCard label="Total Discounts" value={money(summary.total_discounts)} color="amber" />
+        <StatCard label="Product Revenue" value={money(summary.total_revenue)} color="emerald" />
+        <StatCard label="Delivery — Own" value={money(summary.delivery_own || 0)} sub="Our income" color="cyan" />
+        <StatCard label="Delivery — Courier" value={money(summary.delivery_courier || 0)} sub="Not our money" color="amber" />
         <StatCard label="Refunds" value={`${summary.refund_count || 0} / ${money(summary.refund_total || 0)}`} color="red" />
-        <StatCard label="Avg Order Value" value={money(summary.avg_order_value)} color="cyan" />
+        <StatCard label="Avg Order Value" value={money(summary.avg_order_value)} color="violet" />
       </div>
       {chartData.length > 1 && (
         <motion.div variants={fadeUp} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -151,11 +153,18 @@ function ProfitReport() {
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
       <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} onExport={() => exportCSV(byProduct, `profit-${from}-${to}`)} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total Revenue" value={money(summary.total_revenue)} color="brand" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <StatCard label="Product Revenue" value={money(summary.total_revenue)} color="brand" />
         <StatCard label="Cost of Goods" value={money(summary.total_cogs)} color="amber" />
         <StatCard label="Gross Profit" value={money(summary.gross_profit)} color="emerald" />
-        <StatCard label="Margin" value={`${summary.margin}%`} color="cyan" />
+        <StatCard label="Margin" value={`${summary.margin}%`} color="violet" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard label="Delivery — Own" value={money(summary.delivery_own || 0)} sub="Our income (separate)" color="cyan" />
+        <StatCard label="Delivery — Courier" value={money(summary.delivery_courier || 0)} sub="Not our money" color="amber" />
+        {(summary.transit_count || 0) > 0 && (
+          <StatCard label="In Transit" value={money(summary.transit_revenue || 0)} sub={`${summary.transit_count} orders (shipped/packed)`} color="violet" />
+        )}
       </div>
       {trend.length > 1 && (
         <motion.div variants={fadeUp} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -541,6 +550,183 @@ function PurchaseReport() {
   );
 }
 
+// ============ SETTLEMENT REPORT ============
+function SettlementReport() {
+  const [summaries, setSummaries] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [activeCourier, setActiveCourier] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [settleAmount, setSettleAmount] = useState('');
+  const [settleNote, setSettleNote] = useState('');
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [settling, setSettling] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => { loadSummaries(); }, []);
+
+  async function loadSummaries() {
+    setLoading(true);
+    try {
+      const res = await client.get('/settlements/summaries');
+      setSummaries(res.data.data || []);
+    } catch { addToast('Failed to load settlement data', 'error'); }
+    finally { setLoading(false); }
+  }
+
+  async function loadOrders(code) {
+    setActiveCourier(code);
+    setSelectedIds(new Set());
+    setSettleAmount('');
+    setSettleNote('');
+    try {
+      const res = await client.get(`/settlements/${code.toLowerCase()}/orders`);
+      setOrders(res.data.data || []);
+    } catch { addToast('Failed to load orders', 'error'); }
+  }
+
+  function toggleOrder(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    if (selectedIds.size === orders.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(orders.map(o => o.delivery_id)));
+  }
+
+  useEffect(() => {
+    const total = orders.filter(o => selectedIds.has(o.delivery_id)).reduce((s, o) => s + o.item_value, 0);
+    if (selectedIds.size > 0) setSettleAmount(total.toFixed(2));
+  }, [selectedIds, orders]);
+
+  async function submitSettlement(e) {
+    e.preventDefault();
+    const amt = parseFloat(settleAmount);
+    if (!amt || amt <= 0 || !activeCourier) return;
+    setSettling(true);
+    try {
+      await client.post(`/settlements/${activeCourier.toLowerCase()}/settle`, {
+        amount: amt,
+        delivery_ids: [...selectedIds],
+        notes: settleNote || undefined,
+      });
+      addToast(`Settlement of Rs. ${amt.toLocaleString('en-LK')} recorded`, 'success');
+      setActiveCourier(null);
+      loadSummaries();
+    } catch (err) { addToast(err.response?.data?.message || 'Failed', 'error'); }
+    finally { setSettling(false); }
+  }
+
+  if (loading) return <ReportSkeleton />;
+
+  return (
+    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {summaries.map(s => (
+          <motion.div key={s.courier_code} variants={fadeUp}
+            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">{s.courier_name}</p>
+                <p className="mt-1 font-mono text-2xl font-bold text-red-600 dark:text-red-400">{money(s.outstanding)}</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {s.unsettled_orders} unsettled order{s.unsettled_orders !== 1 ? 's' : ''}
+                  {s.days_pending > 0 && <span className="ml-1 text-amber-600 dark:text-amber-400">· oldest {s.days_pending}d ago</span>}
+                </p>
+              </div>
+              <button onClick={() => loadOrders(s.courier_code)}
+                className="rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-100 dark:bg-brand-900/30 dark:text-brand-400">
+                {activeCourier === s.courier_code ? 'Refresh' : 'View Orders'}
+              </button>
+            </div>
+          </motion.div>
+        ))}
+        {summaries.length === 0 && (
+          <motion.div variants={fadeUp} className="col-span-full rounded-xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
+            <p className="text-sm text-slate-400">No courier accounts found</p>
+          </motion.div>
+        )}
+      </div>
+
+      {activeCourier && orders.length > 0 && (
+        <motion.div variants={fadeUp} className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+              Unsettled Orders — {summaries.find(s => s.courier_code === activeCourier)?.courier_name}
+            </h3>
+            <button onClick={selectAll} className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
+              {selectedIds.size === orders.length ? 'Deselect All' : 'Select All'}
+            </button>
+          </div>
+          <div className="max-h-[400px] overflow-y-auto">
+            <table className="w-full text-left text-sm">
+              <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                <th className="px-4 py-2 w-8"></th>
+                <th className="px-4 py-2">Order #</th>
+                <th className="px-4 py-2">Ship Date</th>
+                <th className="px-4 py-2">Tracking</th>
+                <th className="px-4 py-2 text-right">Item Value</th>
+                <th className="px-4 py-2 text-right">Days</th>
+              </tr></thead>
+              <tbody>
+                {orders.map(o => (
+                  <tr key={o.delivery_id} onClick={() => toggleOrder(o.delivery_id)}
+                    className={`cursor-pointer border-b border-slate-50 transition dark:border-slate-800/50 ${selectedIds.has(o.delivery_id) ? 'bg-brand-50/50 dark:bg-brand-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                    <td className="px-4 py-2">
+                      <input type="checkbox" checked={selectedIds.has(o.delivery_id)} onChange={() => toggleOrder(o.delivery_id)}
+                        className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600" />
+                    </td>
+                    <td className="px-4 py-2 font-mono text-xs text-slate-900 dark:text-white">{o.order_number}</td>
+                    <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{new Date(o.ship_date).toLocaleDateString('en-LK')}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{o.tracking_number || '—'}</td>
+                    <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900 dark:text-white">{money(o.item_value)}</td>
+                    <td className={`px-4 py-2 text-right font-mono text-xs ${o.days_pending > 14 ? 'font-semibold text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>{o.days_pending}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="border-t border-slate-100 p-4 dark:border-slate-800">
+            <form onSubmit={submitSettlement} className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[150px]">
+                <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Settlement Amount</label>
+                <input type="number" step="0.01" min="0.01" value={settleAmount} onChange={e => setSettleAmount(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              </div>
+              <div className="flex-1 min-w-[150px]">
+                <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Reference / Note</label>
+                <input value={settleNote} onChange={e => setSettleNote(e.target.value)} placeholder="Bank ref, date..."
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              </div>
+              <button type="submit" disabled={settling || !settleAmount}
+                className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+                {settling ? 'Recording...' : `Record Settlement${selectedIds.size > 0 ? ` (${selectedIds.size} orders)` : ''}`}
+              </button>
+            </form>
+            {selectedIds.size > 0 && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Selected: {selectedIds.size} order{selectedIds.size !== 1 ? 's' : ''} totalling{' '}
+                <span className="font-mono font-semibold">{money(orders.filter(o => selectedIds.has(o.delivery_id)).reduce((s, o) => s + o.item_value, 0))}</span>
+              </p>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {activeCourier && orders.length === 0 && (
+        <motion.div variants={fadeUp} className="rounded-xl border border-dashed border-emerald-300 py-8 text-center dark:border-emerald-700">
+          <span className="text-2xl">&#10003;</span>
+          <p className="mt-2 text-sm text-emerald-600 dark:text-emerald-400">All orders settled for this courier</p>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
 // ============ SHARED COMPONENTS ============
 function DateRange({ from, to, setFrom, setTo, onExport }) {
   return (
@@ -612,6 +798,7 @@ export default function Reports() {
   const ReportComponent = {
     sales: SalesReport,
     profit: ProfitReport,
+    settlements: SettlementReport,
     stock: StockReport,
     customers: CustomerReport,
     credit: CreditReport,

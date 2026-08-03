@@ -98,7 +98,7 @@ async function callAI(conversationHistory, customerContext) {
 
   logger.error(`All AI providers failed. Gemini: ${geminiError?.message || 'skipped'}, Claude: ${claudeError?.message || 'skipped/no key'}`);
   return {
-    text: "Sorry, I didn't quite catch that. Could you tell me which product you're looking for? For example: 'Pretty Baby XL' or 'wet wipes'",
+    text: "I'm sorry, I wasn't able to process that right now. Could you try again in a moment? You can ask me about any product, check prices, or track your order.",
     images: [],
     provider: 'fallback',
   };

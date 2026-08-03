@@ -8,12 +8,56 @@ let genAI = null;
 
 function getClient() {
   if (!genAI) {
-    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'PLACEHOLDER') {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key || key === 'PLACEHOLDER') {
       throw new Error('Gemini API key not configured');
     }
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    logger.info(`Gemini: initializing with key ${key.substring(0, 8)}... model=${process.env.GEMINI_MODEL || 'gemini-2.5-flash'}`);
+    genAI = new GoogleGenerativeAI(key);
   }
   return genAI;
+}
+
+function buildGeminiHistory(messages) {
+  let history = messages.map(m => ({
+    role: m.sender === 'customer' ? 'user' : 'model',
+    parts: [{ text: m.message_text || '' }],
+  })).filter(m => m.parts[0].text.trim() !== '');
+
+  // Gemini requires history to START with a user turn
+  while (history.length && history[0].role !== 'user') history.shift();
+
+  // Gemini requires strict alternation — collapse consecutive same-role turns
+  const clean = [];
+  for (const turn of history) {
+    if (clean.length && clean[clean.length - 1].role === turn.role) {
+      clean[clean.length - 1].parts[0].text += '\n' + turn.parts[0].text;
+    } else {
+      clean.push(turn);
+    }
+  }
+
+  // Final turn must be user (we send the new message next)
+  if (clean.length && clean[clean.length - 1].role === 'model') clean.pop();
+
+  return clean;
+}
+
+async function callWithRetry(fn, maxRetries = 2) {
+  let lastErr;
+  const delays = [1000, 3000];
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const is503 = err.message?.includes('503') || err.status === 503;
+      if (!is503 || i === maxRetries) throw err;
+      logger.warn(`Gemini 503 — retrying in ${delays[i]}ms (attempt ${i + 1}/${maxRetries})`);
+      await new Promise(r => setTimeout(r, delays[i]));
+    }
+  }
+  throw lastErr;
 }
 
 async function call(conversationHistory, customerContext) {
@@ -24,10 +68,7 @@ async function call(conversationHistory, customerContext) {
     tools: [{ functionDeclarations: toGeminiFormat() }],
   });
 
-  const history = conversationHistory.slice(0, -1).map(msg => ({
-    role: msg.sender === 'customer' ? 'user' : 'model',
-    parts: [{ text: msg.message_text }],
-  }));
+  const history = buildGeminiHistory(conversationHistory.slice(0, -1));
 
   const chat = model.startChat({ history });
 
@@ -36,7 +77,7 @@ async function call(conversationHistory, customerContext) {
     ? `[Customer context: ${customerContext}]\n\n${latestMessage.message_text}`
     : latestMessage.message_text;
 
-  let result = await chat.sendMessage(userText);
+  let result = await callWithRetry(() => chat.sendMessage(userText));
   let response = result.response;
   let iterations = 0;
   const MAX_TOOL_ITERATIONS = 5;
@@ -71,7 +112,7 @@ async function call(conversationHistory, customerContext) {
       });
     }
 
-    result = await chat.sendMessage(toolResults);
+    result = await callWithRetry(() => chat.sendMessage(toolResults));
     response = result.response;
   }
 

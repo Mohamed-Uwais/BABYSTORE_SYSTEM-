@@ -212,7 +212,7 @@ async function createOrder(payload) {
         courierCustomerId = existingCourier.id;
       } else {
         const [ins] = await connection.query(
-          `INSERT INTO customers (full_name, phone, customer_type, loyalty_tier) VALUES (?, ?, 'loyalty', 'silver')`,
+          `INSERT INTO customers (full_name, phone, customer_type, loyalty_tier) VALUES (?, ?, 'courier', 'none')`,
           [cName, cPhone]
         );
         courierCustomerId = ins.insertId;

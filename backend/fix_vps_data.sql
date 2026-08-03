@@ -66,6 +66,17 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 UPDATE products SET name = TRIM(REGEXP_REPLACE(REPLACE(name, '–', '-'), '[[:space:]]+', ' ')) WHERE name REGEXP '(^\\s|\\s$|\\s{2,}|–)';
 UPDATE product_variants SET variant_label = TRIM(REGEXP_REPLACE(REPLACE(variant_label, '–', '-'), '[[:space:]]+', ' ')) WHERE variant_label REGEXP '(^\\s|\\s$|\\s{2,}|–)';
 
+-- Courier settlement tracking: add settled/settled_at to order_deliveries
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='order_deliveries' AND COLUMN_NAME='settled');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE order_deliveries ADD COLUMN settled BOOLEAN NOT NULL DEFAULT FALSE AFTER label_printed, ADD COLUMN settled_at TIMESTAMP NULL AFTER settled', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Add courier customer_type to ENUM (idempotent — already-existing values are a no-op)
+ALTER TABLE customers MODIFY COLUMN customer_type ENUM('walk_in', 'loyalty', 'courier') NOT NULL DEFAULT 'walk_in';
+
+-- Update existing courier pseudo-customers to type 'courier'
+UPDATE customers SET customer_type = 'courier' WHERE phone IN ('KOOMBIYO', 'FARDAR');
+
 -- WhatsApp notification settings columns (skip if already exist)
 SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='store_settings' AND COLUMN_NAME='wa_notify_confirmed');
 SET @sql = IF(@col_exists = 0, 'ALTER TABLE store_settings ADD COLUMN wa_notify_confirmed TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN wa_notify_shipped TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN wa_notify_delivered TINYINT(1) NOT NULL DEFAULT 1', 'SELECT 1');

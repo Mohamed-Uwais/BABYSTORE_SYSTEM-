@@ -1,10 +1,15 @@
 const db = require('../config/db');
 
 async function salesReport({ from, to }) {
+  // All orders in range for the table (excluding cancelled)
   const [orders] = await db.query(`
     SELECT o.id, o.order_number, o.created_at, o.channel, o.status,
-           o.subtotal, o.discount_total, o.delivery_fee, o.grand_total,
-           COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r WHERE r.order_id = o.id), 0) AS refunded_amount,
+           o.fulfillment_type, o.delivery_fee, o.grand_total,
+           COALESCE((SELECT SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0))
+             FROM order_items oi WHERE oi.order_id = o.id), 0) AS item_revenue,
+           COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
+             FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id
+             WHERE r.order_id = o.id), 0) AS returned_revenue,
            c.full_name AS customer_name, c.phone AS customer_phone,
            u.full_name AS cashier_name,
            (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS items_count,
@@ -13,22 +18,32 @@ async function salesReport({ from, to }) {
     LEFT JOIN customers c ON c.id = o.customer_id
     LEFT JOIN users u ON u.id = o.cashier_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+      AND o.status NOT IN ('cancelled', 'refunded')
     ORDER BY o.created_at DESC
   `, [from, to]);
 
+  // KPI summary — settled orders only (completed, delivered, partially_refunded)
   const [[summary]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(subtotal - discount_total), 0)
-             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id
-                WHERE o2.created_at >= ? AND o2.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-                  AND o2.status NOT IN ('cancelled')), 0) AS total_revenue,
-           COALESCE(SUM(delivery_fee), 0) AS delivery_collected,
-           COALESCE(SUM(discount_total), 0) AS total_discounts,
-           COALESCE(AVG(subtotal - discount_total), 0) AS avg_order_value
-    FROM orders
-    WHERE created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND status NOT IN ('cancelled')
-  `, [from, to, from, to]);
+           COALESCE(SUM(sub.item_revenue - sub.returned_revenue), 0) AS total_revenue,
+           COALESCE(SUM(CASE WHEN sub.fulfillment_type = 'self_delivery' THEN sub.delivery_fee ELSE 0 END), 0) AS delivery_own,
+           COALESCE(SUM(CASE WHEN sub.fulfillment_type = 'courier_delivery' THEN sub.delivery_fee ELSE 0 END), 0) AS delivery_courier,
+           COALESCE(SUM(sub.returned_revenue), 0) AS total_returns
+    FROM (
+      SELECT o.id, o.fulfillment_type, o.delivery_fee,
+             COALESCE((SELECT SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0))
+               FROM order_items oi WHERE oi.order_id = o.id), 0) AS item_revenue,
+             COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
+               FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id
+               WHERE r.order_id = o.id), 0) AS returned_revenue
+      FROM orders o
+      WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+        AND o.status IN ('completed', 'delivered', 'partially_refunded')
+    ) sub
+  `, [from, to]);
+
+  // Avg computed from the same settled set
+  summary.avg_order_value = summary.total_orders > 0 ? summary.total_revenue / summary.total_orders : 0;
 
   const [[refundSummary]] = await db.query(`
     SELECT COUNT(DISTINCT r.order_id) AS refund_count,
@@ -36,7 +51,7 @@ async function salesReport({ from, to }) {
     FROM order_returns r
     JOIN orders o ON o.id = r.order_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status NOT IN ('cancelled')
+      AND o.status IN ('completed', 'delivered', 'partially_refunded')
   `, [from, to]);
 
   return { orders, summary: { ...summary, ...refundSummary } };
@@ -186,13 +201,22 @@ async function customerReport() {
 }
 
 async function profitReport({ from, to }) {
-  // Per-order breakdown: revenue, COGS, and returned cost all computed consistently
+  // Settled statuses: completed, delivered, partially_refunded
+  // In-transit: shipped, packed — shown separately, not in headline
+  const SETTLED = "('completed','delivered','partially_refunded')";
+  const IN_TRANSIT = "('shipped','packed')";
+
+  // Revenue and COGS from order_items (item-level), not order-level subtotal
   const [orders] = await db.query(`
     SELECT o.id, o.order_number, o.created_at, o.grand_total, o.status,
+           o.fulfillment_type, o.delivery_fee,
            c.full_name AS customer_name,
-           COALESCE(o.subtotal - o.discount_total, 0) AS revenue,
-           COALESCE(SUM(COALESCE(oi.cost_price_snapshot, pv.cost_price, 0) * oi.quantity), 0) AS gross_cogs,
-           COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r WHERE r.order_id = o.id), 0) AS refunded_amount,
+           COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0) AS revenue,
+           COALESCE(SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, pv.cost_price, 0)), 0) AS gross_cogs,
+           COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
+             FROM order_returns r
+             JOIN order_items oi2 ON oi2.id = r.order_item_id
+             WHERE r.order_id = o.id), 0) AS returned_revenue,
            COALESCE((SELECT SUM(r.quantity * COALESCE(oi2.cost_price_snapshot, pv2.cost_price, 0))
              FROM order_returns r
              JOIN order_items oi2 ON oi2.id = r.order_item_id
@@ -203,40 +227,55 @@ async function profitReport({ from, to }) {
     JOIN order_items oi ON oi.order_id = o.id
     JOIN product_variants pv ON pv.id = oi.variant_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status NOT IN ('cancelled')
+      AND o.status IN ${SETTLED}
     GROUP BY o.id
     ORDER BY o.created_at DESC
   `, [from, to]);
 
-  // Compute net values per order
+  // In-transit orders (shipped/packed) — separate from headline
+  const [transitOrders] = await db.query(`
+    SELECT o.id, o.order_number, o.created_at, o.grand_total, o.status,
+           o.fulfillment_type, o.delivery_fee,
+           c.full_name AS customer_name,
+           COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0) AS revenue,
+           COALESCE(SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, pv.cost_price, 0)), 0) AS gross_cogs
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customer_id
+    JOIN order_items oi ON oi.order_id = o.id
+    JOIN product_variants pv ON pv.id = oi.variant_id
+    WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+      AND o.status IN ${IN_TRANSIT}
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+  `, [from, to]);
+
   for (const o of orders) {
     o.revenue = Number(o.revenue);
     o.gross_cogs = Number(o.gross_cogs);
-    o.refunded_amount = Number(o.refunded_amount);
+    o.returned_revenue = Number(o.returned_revenue);
     o.returned_cogs = Number(o.returned_cogs);
-    o.net_revenue = o.revenue - o.refunded_amount;
+    o.net_revenue = o.revenue - o.returned_revenue;
     o.cogs = o.gross_cogs - o.returned_cogs;
     o.profit = o.net_revenue - o.cogs;
   }
 
-  // By-product breakdown with returned quantities subtracted
+  // By-product breakdown — same settled statuses
   const [byProduct] = await db.query(`
     SELECT p.name AS product_name, pv.variant_label, pv.id AS variant_id,
            SUM(oi.quantity) AS gross_units,
            COALESCE((SELECT SUM(r.quantity) FROM order_returns r WHERE r.order_item_id = oi.id AND r.restock = 1), 0) AS returned_units,
-           SUM(oi.unit_price * oi.quantity) AS gross_revenue,
-           SUM(COALESCE(oi.cost_price_snapshot, pv.cost_price, 0) * oi.quantity) AS gross_cogs
+           SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS gross_revenue,
+           SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, pv.cost_price, 0)) AS gross_cogs
     FROM orders o
     JOIN order_items oi ON oi.order_id = o.id
     JOIN product_variants pv ON pv.id = oi.variant_id
     JOIN products p ON p.id = pv.product_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status NOT IN ('cancelled')
+      AND o.status IN ${SETTLED}
     GROUP BY pv.id, oi.id
     ORDER BY gross_revenue DESC
   `, [from, to]);
 
-  // Aggregate by variant (the above groups by oi.id for correct returned_units subquery)
   const variantMap = {};
   for (const row of byProduct) {
     const vid = row.variant_id;
@@ -253,13 +292,20 @@ async function profitReport({ from, to }) {
   }
   const byProductFinal = Object.values(variantMap).filter(v => v.units_sold > 0).sort((a, b) => b.profit - a.profit);
 
-  // Summary derived from the same order data — guaranteed to match
+  // Summary from settled orders — headline numbers
   const total_revenue = orders.reduce((s, o) => s + o.net_revenue, 0);
   const total_cogs = orders.reduce((s, o) => s + o.cogs, 0);
   const grossProfit = total_revenue - total_cogs;
   const margin = total_revenue > 0 ? (grossProfit / total_revenue * 100) : 0;
+  const delivery_own = orders.filter(o => o.fulfillment_type === 'self_delivery').reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
+  const delivery_courier = orders.filter(o => o.fulfillment_type === 'courier_delivery').reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
 
-  // Daily trend derived from the same orders array — guaranteed consistent
+  // In-transit totals
+  const transit_revenue = transitOrders.reduce((s, o) => s + Number(o.revenue), 0);
+  const transit_cogs = transitOrders.reduce((s, o) => s + Number(o.gross_cogs), 0);
+  const transit_count = transitOrders.length;
+
+  // Daily trend from settled orders
   const trendMap = {};
   for (const o of orders) {
     const d = new Date(o.created_at).toISOString().slice(0, 10);
@@ -270,8 +316,8 @@ async function profitReport({ from, to }) {
   const dailyTrend = Object.values(trendMap).sort((a, b) => a.date.localeCompare(b.date));
 
   return {
-    orders: orders.map(o => ({ id: o.id, order_number: o.order_number, created_at: o.created_at, grand_total: o.grand_total, status: o.status, customer_name: o.customer_name, revenue: o.net_revenue, cogs: o.cogs, refunded_amount: o.refunded_amount, profit: o.profit })),
-    summary: { total_revenue, total_cogs, gross_profit: grossProfit, margin: Math.round(margin * 100) / 100 },
+    orders: orders.map(o => ({ id: o.id, order_number: o.order_number, created_at: o.created_at, grand_total: o.grand_total, status: o.status, customer_name: o.customer_name, revenue: o.net_revenue, cogs: o.cogs, returned_revenue: o.returned_revenue, profit: o.profit })),
+    summary: { total_revenue, total_cogs, gross_profit: grossProfit, margin: Math.round(margin * 100) / 100, delivery_own, delivery_courier, transit_revenue, transit_cogs, transit_count },
     dailyTrend,
     byProduct: byProductFinal,
   };

@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
+import html2canvas from 'html2canvas';
 import JsBarcode from 'jsbarcode';
 import client from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 function money(n) {
   return `Rs. ${Number(n || 0).toFixed(2)}`;
 }
 
 export default function ShippingLabel({ order, onClose }) {
+  const toast = useToast();
   const [settings, setSettings] = useState(null);
+  const [whatsappBusy, setWhatsappBusy] = useState(false);
   const barcodeRef = useRef(null);
   const trackingBarcodeRef = useRef(null);
+  const labelRef = useRef(null);
 
   useEffect(() => {
     client.get('/settings').then(r => setSettings(r.data.data)).catch(() => {});
@@ -117,6 +122,34 @@ export default function ShippingLabel({ order, onClose }) {
     setTimeout(() => win.print(), 400);
   }
 
+  async function handleWhatsApp() {
+    if (!labelRef.current) return;
+    setWhatsappBusy(true);
+    try {
+      const canvas = await html2canvas(labelRef.current, { backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false });
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      const file = new File([blob], `label-${order.order_number}.jpg`, { type: 'image/jpeg' });
+
+      let phone = (delivery.receiver_phone || order.customer_phone || '').replace(/[^0-9]/g, '');
+      if (phone && phone.startsWith('0')) phone = '94' + phone.substring(1);
+      const waUrl = phone ? `https://wa.me/${phone}` : 'https://wa.me/';
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `Label ${order.order_number}` });
+      } else {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = file.name;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        window.open(waUrl, '_blank');
+        toast.info('Label downloaded! Attach it in the WhatsApp chat that just opened.');
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') toast.error('Failed to share label');
+    } finally { setWhatsappBusy(false); }
+  }
+
   if (!order) return null;
   const store = settings || {};
   const isPaid = !order.delivery_fee || order.delivery_fee <= 0;
@@ -130,12 +163,16 @@ export default function ShippingLabel({ order, onClose }) {
           <div className="flex gap-2">
             <button onClick={printLabel}
               className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 active:scale-[0.97]">Print</button>
+            <button onClick={handleWhatsApp} disabled={whatsappBusy}
+              className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50">
+              {whatsappBusy ? 'Sharing...' : 'WhatsApp'}
+            </button>
             <button onClick={onClose}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">Close</button>
           </div>
         </div>
 
-        <div id="shipping-label-print" className="rounded-xl border-2 border-slate-900 dark:border-slate-300">
+        <div id="shipping-label-print" ref={labelRef} className="rounded-xl border-2 border-slate-900 dark:border-slate-300">
           {/* Header */}
           <div className="border-b-2 border-slate-900 px-4 py-3 text-center dark:border-slate-300">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">{store.store_name || 'LITTORA'}</h3>

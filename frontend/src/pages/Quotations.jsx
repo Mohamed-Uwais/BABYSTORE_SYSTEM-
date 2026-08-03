@@ -37,9 +37,11 @@ export default function Quotations() {
     try {
       const res = await client.get('/quotations');
       setQuotations(res.data.data || []);
-    } catch { toast.error('Failed to load quotations'); }
+    } catch (err) {
+      console.error('Failed to load quotations:', err);
+    }
     finally { setLoading(false); }
-  }, [toast]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
