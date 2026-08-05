@@ -42,7 +42,7 @@ function detectHallucination(text, knownProducts) {
   return false;
 }
 
-const SAFE_FALLBACK = "I'd like to help you find the right product. Could you tell me the brand or size you're looking for?";
+const SAFE_FALLBACK = "I'd like to help you find the right product. Could you tell me what you're looking for?";
 
 async function callAI(conversationHistory, customerContext) {
   let geminiError = null;

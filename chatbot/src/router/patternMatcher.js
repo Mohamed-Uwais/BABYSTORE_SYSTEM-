@@ -18,7 +18,22 @@ const FILLER_WORDS = new Set([
   'any', 'the', 'a', 'an', 'of', 'please', 'pls', 'can', 'you', 'show', 'do',
   'have', 'got', 'give', 'what', 'is', 'are', 'there', 'how', 'much', 'about',
   'hi', 'hello', 'hey', 'ok', 'okay', 'yes', 'no', 'and', 'or', 'this', 'that',
+  'im', 'its', 'it', 'like', 'just', 'also', 'too', 'my', 'ur', 'your',
 ]);
+
+const SYNONYM_MAP = {
+  'wipe': 'wet wipes', 'wipes': 'wet wipes', 'tissue': 'wet wipes', 'tissues': 'wet wipes',
+  'nappy': 'diaper', 'nappies': 'diapers', 'pampers': 'diapers',
+  'pant': 'pants', 'pull-up': 'pants', 'pullup': 'pants', 'pull-ups': 'pants',
+  'bottle': 'feeding bottle', 'bottles': 'feeding bottle', 'feeder': 'feeding bottle',
+  'pacifier': 'soother', 'dummy': 'soother', 'soothers': 'soother',
+  'xl': 'extra large', 'xxl': 'extra extra large',
+  'nb': 'newborn', 'new-born': 'newborn',
+  's': 'small', 'm': 'medium', 'l': 'large',
+  'cream': 'diaper cream', 'rash': 'diaper cream',
+  'powder': 'baby powder', 'lotion': 'baby lotion', 'oil': 'baby oil',
+  'shampoo': 'baby shampoo', 'soap': 'baby soap', 'wash': 'baby wash',
+};
 
 async function match(message, customer) {
   const intent = classify(message);
@@ -186,13 +201,46 @@ async function handlePromotions() {
   return result('promotion', msg);
 }
 
+function expandSynonyms(tokens) {
+  const expanded = [];
+  for (const t of tokens) {
+    if (SYNONYM_MAP[t]) {
+      for (const word of SYNONYM_MAP[t].split(' ')) {
+        if (!expanded.includes(word)) expanded.push(word);
+      }
+    } else {
+      expanded.push(t);
+    }
+  }
+  return expanded;
+}
+
+function buildSearchQuery(searchTokens) {
+  const searchExpr = "LOWER(CONCAT_WS(' ', p.name, pv.variant_label, b.name, c.name))";
+  const conditions = [];
+  const params = [];
+  for (const token of searchTokens) {
+    const base = token.endsWith('s') && token.length > 3 ? token.slice(0, -1) : null;
+    if (base) {
+      conditions.push(`(${searchExpr} LIKE ? OR ${searchExpr} LIKE ?)`);
+      params.push(`%${token}%`, `%${base}%`);
+    } else {
+      conditions.push(`${searchExpr} LIKE ?`);
+      params.push(`%${token}%`);
+    }
+  }
+  return { conditions, params };
+}
+
 async function catchAllProductLookup(message) {
-  const tokens = message.toLowerCase().replace(/[?!.,;:'"]/g, '').split(/\s+/)
-    .filter(t => t.length >= 2 && !FILLER_WORDS.has(t));
+  const raw = message.toLowerCase().replace(/[?!.,;:'"]/g, '').split(/\s+/)
+    .filter(t => t.length >= 1 && !FILLER_WORDS.has(t));
 
-  if (tokens.length === 0) return null;
+  if (raw.length === 0) return null;
 
-  const searchField = "LOWER(CONCAT_WS(' ', p.name, pv.variant_label, b.name, c.name, GROUP_CONCAT(t.name SEPARATOR ' ')))";
+  const tokens = expandSynonyms(raw);
+  logger.info(`[Catch-all] raw=[${raw.join(',')}] expanded=[${tokens.join(',')}]`);
+
   const baseSelect = `SELECT p.name AS product_name, pv.variant_label, pv.retail_price, pv.current_stock,
          pv.discount_type, pv.discount_value, pv.image_url, pv.id AS variant_id,
          b.name AS brand
@@ -200,50 +248,43 @@ async function catchAllProductLookup(message) {
     JOIN products p ON p.id = pv.product_id
     LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN brands b ON b.id = p.brand_id
-    LEFT JOIN product_tags pt ON pt.product_id = p.id
-    LEFT JOIN tags t ON t.id = pt.tag_id
     WHERE p.is_active = TRUE AND pv.is_active = TRUE`;
 
-  // Try all tokens as AND conditions, then progressively drop tokens
-  for (let drop = 0; drop <= Math.min(tokens.length - 1, 2); drop++) {
-    const subset = drop === 0 ? tokens : tokens.slice(0, tokens.length - drop);
-    if (subset.length === 0) continue;
-
-    const conditions = [];
-    const params = [];
-    for (const token of subset) {
-      const base = token.endsWith('s') && token.length > 3 ? token.slice(0, -1) : null;
-      if (base) {
-        conditions.push(`(LOWER(CONCAT_WS(' ', p.name, pv.variant_label, b.name, c.name)) LIKE ? OR LOWER(CONCAT_WS(' ', p.name, pv.variant_label, b.name, c.name)) LIKE ?)`);
-        params.push(`%${token}%`, `%${base}%`);
-      } else {
-        conditions.push(`LOWER(CONCAT_WS(' ', p.name, pv.variant_label, b.name, c.name)) LIKE ?`);
-        params.push(`%${token}%`);
-      }
-    }
-
-    const sql = `${baseSelect} AND ${conditions.join(' AND ')} GROUP BY pv.id ORDER BY pv.current_stock DESC LIMIT 8`;
+  async function search(searchTokens, label) {
+    const { conditions, params } = buildSearchQuery(searchTokens);
+    if (conditions.length === 0) return null;
+    const sql = `${baseSelect} AND ${conditions.join(' AND ')} ORDER BY pv.current_stock DESC LIMIT 8`;
     const [rows] = await db.query(sql, params);
     if (rows.length > 0) {
-      logger.info(`[Catch-all product lookup] found ${rows.length} results for tokens: [${subset.join(', ')}]`);
+      logger.info(`[Catch-all] ${label}: ${rows.length} results for [${searchTokens.join(', ')}]`);
       const images = rows.filter(v => v.image_url).slice(0, 3)
         .map(v => ({ url: toPublicUrl(v.image_url), caption: `${v.product_name} — ${templates.formatPrice(v.retail_price)}` }));
-      return result('product_lookup', templates.productList(rows, `Here's what we have for "${subset.join(' ')}":\n`), images);
+      return result('product_lookup', templates.productList(rows, `Here's what we have for "${raw.join(' ')}":\n`), images);
     }
+    return null;
   }
 
-  // Single-token fallback
+  // 1. Try all expanded tokens together
+  let r = await search(tokens, 'all-tokens');
+  if (r) return r;
+
+  // 2. Progressive drop: remove tokens from the end
+  for (let drop = 1; drop <= Math.min(tokens.length - 1, 2); drop++) {
+    r = await search(tokens.slice(0, tokens.length - drop), `drop-${drop}`);
+    if (r) return r;
+  }
+
+  // 3. Single-token fallback (try each expanded token individually)
   for (const token of tokens) {
-    const [rows] = await db.query(
-      `${baseSelect} AND LOWER(CONCAT_WS(' ', p.name, pv.variant_label, b.name, c.name)) LIKE ? GROUP BY pv.id ORDER BY pv.current_stock DESC LIMIT 8`,
-      [`%${token}%`]
-    );
-    if (rows.length > 0) {
-      logger.info(`[Catch-all product lookup] found ${rows.length} results for single token: ${token}`);
-      const images = rows.filter(v => v.image_url).slice(0, 3)
-        .map(v => ({ url: toPublicUrl(v.image_url), caption: `${v.product_name} — ${templates.formatPrice(v.retail_price)}` }));
-      return result('product_lookup', templates.productList(rows, `Here's what we have for "${token}":\n`), images);
-    }
+    r = await search([token], 'single');
+    if (r) return r;
+  }
+
+  // 4. Also try original raw tokens individually (in case synonym expansion missed)
+  for (const token of raw) {
+    if (tokens.includes(token)) continue;
+    r = await search([token], 'raw-single');
+    if (r) return r;
   }
 
   return null;
