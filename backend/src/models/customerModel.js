@@ -90,9 +90,12 @@ async function recordCreditRepayment(customerId, amount, notes, createdBy) {
 
   const [[customer]] = await db.query('SELECT credit_balance FROM customers WHERE id = ?', [customerId]);
   if (!customer) throw new Error('Customer not found');
-  const outstanding = Math.abs(Number(customer.credit_balance));
-  if (amount > outstanding + 0.5) {
-    throw new Error(`Repayment exceeds outstanding balance of Rs. ${outstanding.toFixed(2)}`);
+  const balance = Number(customer.credit_balance);
+  if (balance <= 0) {
+    throw new Error('Customer has no outstanding credit to repay');
+  }
+  if (amount > balance + 0.5) {
+    throw new Error(`Repayment exceeds outstanding balance of Rs. ${balance.toFixed(2)}`);
   }
 
   const connection = await db.getConnection();

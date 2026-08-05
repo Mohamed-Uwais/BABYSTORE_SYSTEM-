@@ -46,6 +46,7 @@ export default function Billing() {
 
   const [cart, setCart] = useState([]);
 
+  const [customerMode, setCustomerMode] = useState('walkin');
   const [phoneInput, setPhoneInput] = useState('');
   const [customer, setCustomer] = useState(null);
   const [customerSearchState, setCustomerSearchState] = useState('idle');
@@ -140,6 +141,7 @@ export default function Billing() {
         client.get(`/customers/${data.customer_id}`).then(r => {
           setCustomer(r.data.data);
           setPhoneInput(r.data.data?.phone || '');
+          setCustomerMode('loyalty');
         }).catch(() => {});
       }
       searchParams.delete('from_quotation');
@@ -504,12 +506,15 @@ export default function Billing() {
     setShowSuggestions(false);
     setSuggestions([]);
     setPhoneInput(c.phone || '');
+    setCustomerMode('loyalty');
     try {
       const res = await client.get(`/customers/${c.id}`);
       setCustomer(res.data.data);
       setCustomerSearchState('idle');
-      if (Number(res.data.data.credit_balance) !== 0) {
-        toast.warning(`Customer has Rs. ${Math.abs(Number(res.data.data.credit_balance)).toFixed(2)} outstanding credit`);
+      if (Number(res.data.data.credit_balance) > 0) {
+        toast.warning(`Customer owes Rs. ${Number(res.data.data.credit_balance).toFixed(2)}`);
+      } else if (Number(res.data.data.credit_balance) < 0) {
+        toast.success(`Customer has Rs. ${Math.abs(Number(res.data.data.credit_balance)).toFixed(2)} store credit`);
       }
     } catch { setError('Customer lookup failed'); }
   }
@@ -523,9 +528,12 @@ export default function Billing() {
       const res = await client.get(`/customers/phone/${encodeURIComponent(phoneInput.trim())}`);
       if (res.data.data) {
         setCustomer(res.data.data);
+        setCustomerMode('loyalty');
         setCustomerSearchState('idle');
-        if (Number(res.data.data.credit_balance) !== 0) {
-          toast.warning(`Customer has Rs. ${Math.abs(Number(res.data.data.credit_balance)).toFixed(2)} outstanding credit`);
+        if (Number(res.data.data.credit_balance) > 0) {
+          toast.warning(`Customer owes Rs. ${Number(res.data.data.credit_balance).toFixed(2)}`);
+        } else if (Number(res.data.data.credit_balance) < 0) {
+          toast.success(`Customer has Rs. ${Math.abs(Number(res.data.data.credit_balance)).toFixed(2)} store credit`);
         }
       } else {
         setCustomer(null);
@@ -559,6 +567,7 @@ export default function Billing() {
     setCustomerSearchState('idle');
     setSuggestions([]);
     setShowSuggestions(false);
+    setCustomerMode('walkin');
     setPayments((prev) => prev.filter((p) => p.method !== 'store_credit'));
   }
 
@@ -606,7 +615,7 @@ export default function Billing() {
   }, [grandTotal, splitMode]);
 
   const hasStoreCreditPayment = payments.some((p) => p.method === 'store_credit');
-  const storeCreditBlocked = hasStoreCreditPayment && (!customer || customer.customer_type !== 'loyalty');
+  const storeCreditBlocked = hasStoreCreditPayment && (!customer || customerMode === 'walkin');
 
   const deliveryFieldsValid = fulfillment === 'pickup' || (
     receiverName.trim() && receiverPhone.trim() && receiverAddress.trim()
@@ -782,7 +791,7 @@ export default function Billing() {
   useKeyboardShortcuts([
     { key: 'F1', action: () => setShowShortcuts(v => !v), allowInInput: true },
     { key: 'F2', action: () => { setCart([]); setSearch(''); clearCustomer(); resetDelivery(); setAppliedPromos([]); setPromoDiscount(0); setFreeDelivery(false); setCouponApplied(null); setCouponCode(''); setPayments([]); setSuccessOrder(null); setManualDiscountValue(''); setReturnMode(false); setReturnOrder(null); setReturnSelections([]); setReturnItems([]); setReturnResult(null); setWholesaleMode(false); searchRef.current?.focus(); toast.info('New sale'); }, allowInInput: true },
-    { key: 'F3', action: () => phoneRef.current?.focus(), allowInInput: true },
+    { key: 'F3', action: () => { setCustomerMode('loyalty'); setTimeout(() => phoneRef.current?.focus(), 100); }, allowInInput: true },
     { key: 'F4', action: () => { setScanMessage(null); setScannerOpen(true); }, allowInInput: true },
     { key: 'Escape', action: () => { if (showShortcuts) setShowShortcuts(false); else if (scannerOpen) setScannerOpen(false); else if (receiptOrderId) setReceiptOrderId(null); else if (successOrder) setSuccessOrder(null); }, allowInInput: true },
     { key: 'Enter', ctrl: true, action: () => { if (canCompleteSale) completeSale(); }, allowInInput: true },
@@ -932,19 +941,69 @@ export default function Billing() {
                       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                         {customer.customer_type === 'loyalty' ? 'Loyalty member' : 'Walk-in (registered)'} ·{' '}
                         {customer.loyalty_points_balance} pts
-                        {Number(customer.credit_balance) !== 0 && <> · <span className="font-medium text-red-600 dark:text-red-400">Owes <span className="font-mono">{money(Math.abs(customer.credit_balance))}</span></span></>}
+                        {Number(customer.credit_balance) > 0 && <> · <span className="font-medium text-red-600 dark:text-red-400">Owes <span className="font-mono">{money(customer.credit_balance)}</span></span></>}
+                        {Number(customer.credit_balance) < 0 && <> · <span className="font-medium text-emerald-600 dark:text-emerald-400">Credit <span className="font-mono">{money(Math.abs(customer.credit_balance))}</span></span></>}
                       </p>
                     </div>
                     <button onClick={clearCustomer} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">Clear</button>
                   </div>
-                  {Number(customer.credit_balance) !== 0 && (
+                  {Number(customer.credit_balance) > 0 && (
                     <div className="mt-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-900/20">
-                      <span className="text-xs font-medium text-red-700 dark:text-red-400">⚠️ This customer owes {money(Math.abs(customer.credit_balance))}</span>
+                      <span className="text-xs font-medium text-red-700 dark:text-red-400">⚠️ This customer owes {money(customer.credit_balance)}</span>
+                    </div>
+                  )}
+                  {Number(customer.credit_balance) < 0 && (
+                    <div className="mt-2 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 dark:bg-emerald-900/20">
+                      <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">💰 Store credit available: {money(Math.abs(customer.credit_balance))}</span>
+                      {!payments.some(p => p.method === 'store_credit') && grandTotal > 0 && (
+                        <button onClick={() => {
+                          const creditAvail = Math.abs(Number(customer.credit_balance));
+                          const applyAmt = Math.min(creditAvail, grandTotal);
+                          if (applyAmt <= 0) return;
+                          if (splitMode) {
+                            setPayments(prev => [...prev.filter(p => p.method !== 'store_credit'), { method: 'store_credit', amount: applyAmt.toFixed(2) }]);
+                          } else if (applyAmt >= grandTotal) {
+                            setPayments([{ method: 'store_credit', amount: grandTotal.toFixed(2) }]);
+                          } else {
+                            setSplitMode(true);
+                            setPayments([{ method: 'store_credit', amount: applyAmt.toFixed(2) }, { method: 'cash', amount: (grandTotal - applyAmt).toFixed(2) }]);
+                          }
+                        }}
+                          className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 active:scale-[0.97]">
+                          Apply Store Credit
+                        </button>
+                      )}
                     </div>
                   )}
                 </motion.div>
               ) : (
                 <div>
+                  {/* Walk-in / Loyalty toggle */}
+                  <div className="mb-2 grid grid-cols-2 gap-2">
+                    <button onClick={() => { setCustomerMode('walkin'); setPhoneInput(''); setCustomerSearchState('idle'); }}
+                      className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${customerMode === 'walkin' ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-900/20' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'}`}>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-white">Walk-in</span>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">No details needed</p>
+                    </button>
+                    <button onClick={() => { setCustomerMode('loyalty'); setTimeout(() => phoneRef.current?.focus(), 100); }}
+                      className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${customerMode === 'loyalty' ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-900/20' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'}`}>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-white">Loyalty</span>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">Search by phone</p>
+                    </button>
+                  </div>
+
+                  {/* Credit blocked warning */}
+                  {storeCreditBlocked && customerMode === 'walkin' && (
+                    <div className="mb-2 flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2 dark:bg-amber-900/20">
+                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Credit requires a loyalty customer</span>
+                      <button onClick={() => { setCustomerMode('loyalty'); setPayments(prev => prev.filter(p => p.method !== 'store_credit')); setTimeout(() => phoneRef.current?.focus(), 100); }}
+                        className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700">Switch to Loyalty</button>
+                    </div>
+                  )}
+
+                  {/* Phone search — only in loyalty mode */}
+                  {customerMode === 'loyalty' && (
+                  <>
                   <div className="relative">
                     <div className="flex gap-2">
                       <input
@@ -965,7 +1024,7 @@ export default function Billing() {
                     {showSuggestions && (
                       <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800" style={{ maxHeight: 300 }}>
                         {suggestions.length > 0 ? suggestions.map(s => (
-                          <button key={s.id} onMouseDown={() => selectSuggestion(s)}
+                          <button key={s.id} onMouseDown={() => { selectSuggestion(s); setCustomerMode('loyalty'); }}
                             className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-brand-50 dark:hover:bg-slate-700">
                             <div className="flex-1 min-w-0">
                               <span className="font-medium text-slate-800 dark:text-white">{s.full_name || 'Unnamed'}</span>
@@ -978,8 +1037,11 @@ export default function Billing() {
                                 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
                               }`}>{s.loyalty_tier}</span>
                             )}
-                            {s.credit_balance !== 0 && (
-                              <span className="shrink-0 text-[10px] font-medium text-red-500">owes {money(Math.abs(s.credit_balance))}</span>
+                            {Number(s.credit_balance) > 0 && (
+                              <span className="shrink-0 text-[10px] font-medium text-red-500">owes {money(s.credit_balance)}</span>
+                            )}
+                            {Number(s.credit_balance) < 0 && (
+                              <span className="shrink-0 text-[10px] font-medium text-emerald-500">credit {money(Math.abs(s.credit_balance))}</span>
                             )}
                           </button>
                         )) : (
@@ -1011,7 +1073,8 @@ export default function Billing() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  <p className="mt-1.5 text-xs text-slate-400">Leave blank for anonymous walk-in.</p>
+                  </>
+                  )}
                 </div>
               )}
             </section>

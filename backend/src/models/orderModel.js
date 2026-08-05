@@ -52,21 +52,33 @@ async function createOrder(payload) {
       throw new Error('At least one payment method is required');
     }
 
-    // --- 1. Validate customer_type for credit (buy now, pay later) payments ---
+    // --- 1. Validate customer for credit/store-credit payments ---
     const usesCredit = payments.some(p => p.payment_method === 'store_credit');
+    let customerCreditBalance = 0;
     if (usesCredit) {
       if (!customer_id) throw new Error('Credit payment requires a registered customer');
       const [[customer]] = await connection.query(
         'SELECT customer_type, credit_balance, credit_limit FROM customers WHERE id = ? FOR UPDATE', [customer_id]
       );
-      if (!customer || customer.customer_type !== 'loyalty') {
-        throw new Error('Only loyalty customers can buy on credit');
-      }
+      if (!customer) throw new Error('Customer not found');
+      customerCreditBalance = Number(customer.credit_balance);
       const creditAmt = payments.filter(p => p.payment_method === 'store_credit').reduce((s, p) => s + parseFloat(p.amount), 0);
-      if (customer.credit_limit && customer.credit_limit > 0) {
-        const newBalance = Number(customer.credit_balance) + creditAmt;
-        if (newBalance > Number(customer.credit_limit) + 0.5) {
-          throw new Error(`Credit limit exceeded: limit Rs. ${Number(customer.credit_limit).toFixed(2)}, would owe Rs. ${newBalance.toFixed(2)}`);
+      if (customerCreditBalance < 0) {
+        // Customer has store credit (negative balance) — redeem it
+        const available = Math.abs(customerCreditBalance);
+        if (creditAmt > available + 0.5) {
+          throw new Error(`Store credit insufficient: available Rs. ${available.toFixed(2)}, requested Rs. ${creditAmt.toFixed(2)}`);
+        }
+      } else {
+        // Buy on credit (increases balance) — only for loyalty
+        if (customer.customer_type !== 'loyalty') {
+          throw new Error('Only loyalty customers can buy on credit');
+        }
+        if (customer.credit_limit && customer.credit_limit > 0) {
+          const newBalance = customerCreditBalance + creditAmt;
+          if (newBalance > Number(customer.credit_limit) + 0.5) {
+            throw new Error(`Credit limit exceeded: limit Rs. ${Number(customer.credit_limit).toFixed(2)}, would owe Rs. ${newBalance.toFixed(2)}`);
+          }
         }
       }
     }
@@ -156,20 +168,31 @@ async function createOrder(payload) {
       const creditPayment = payments.find(p => p.payment_method === 'store_credit');
       if (creditPayment) {
         const [[existingCredit]] = await connection.query(
-          `SELECT id FROM customer_ledger WHERE customer_id = ? AND entry_type = 'credit_issued' AND reference_type = 'order' AND reference_id = ?`,
+          `SELECT id FROM customer_ledger WHERE customer_id = ? AND entry_type IN ('credit_issued','credit_repaid') AND reference_type = 'order' AND reference_id = ?`,
           [customer_id, orderId]
         );
         if (!existingCredit) {
-          // For courier delivery, credit = product value only (courier collects delivery fee COD)
-          const creditAmount = fulfillment_type === 'courier_delivery'
-            ? (subtotal - discount_total)
-            : parseFloat(creditPayment.amount);
-          await customerModel.addLedgerEntry(connection, {
-            customer_id, entry_type: 'credit_issued', credit_delta: creditAmount,
-            reference_type: 'order', reference_id: orderId,
-            notes: `Bought on credit — order ${order_number}${fulfillment_type === 'courier_delivery' ? ' (excl. delivery fee)' : ''}`,
-            created_by: cashier_id
-          });
+          if (customerCreditBalance < 0) {
+            // Redeeming store credit (negative balance → closer to zero)
+            const redeemAmt = parseFloat(creditPayment.amount);
+            await customerModel.addLedgerEntry(connection, {
+              customer_id, entry_type: 'credit_repaid', credit_delta: redeemAmt,
+              reference_type: 'order', reference_id: orderId,
+              notes: `Store credit redeemed — order ${order_number}`,
+              created_by: cashier_id
+            });
+          } else {
+            // Buy on credit (increases balance)
+            const creditAmount = fulfillment_type === 'courier_delivery'
+              ? (subtotal - discount_total)
+              : parseFloat(creditPayment.amount);
+            await customerModel.addLedgerEntry(connection, {
+              customer_id, entry_type: 'credit_issued', credit_delta: creditAmount,
+              reference_type: 'order', reference_id: orderId,
+              notes: `Bought on credit — order ${order_number}${fulfillment_type === 'courier_delivery' ? ' (excl. delivery fee)' : ''}`,
+              created_by: cashier_id
+            });
+          }
         }
       }
     }

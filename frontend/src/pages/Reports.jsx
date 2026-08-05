@@ -413,44 +413,54 @@ function CreditReport() {
   if (loading) return <ReportSkeleton />;
   if (!data) return null;
 
-  const { customers, total_outstanding } = data;
+  const { owe_us = [], we_hold = [], total_outstanding = 0, total_store_credit = 0 } = data;
+
+  function CreditTable({ rows, colorClass, actionLabel, onAction }) {
+    if (rows.length === 0) return (
+      <motion.div variants={fadeUp} className="rounded-xl border border-dashed border-slate-300 py-8 text-center dark:border-slate-700">
+        <p className="text-sm text-slate-400">None</p>
+      </motion.div>
+    );
+    return (
+      <motion.div variants={fadeUp} className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+              <th className="px-4 py-2">Customer</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2">Tier</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2">Last Credit</th><th className="px-4 py-2">Last Repaid</th>{onAction && <th className="px-4 py-2"></th>}
+            </tr></thead>
+            <tbody>
+              {rows.map(c => (
+                <tr key={c.id} className="border-b border-slate-50 dark:border-slate-800/50">
+                  <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">{c.full_name}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{c.phone}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.loyalty_tier}</td>
+                  <td className={`px-4 py-2 text-right font-mono font-semibold ${colorClass}`}>{money(Math.abs(c.credit_balance))}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.last_credit_date ? new Date(c.last_credit_date).toLocaleDateString() : '—'}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.last_repayment_date ? new Date(c.last_repayment_date).toLocaleDateString() : '—'}</td>
+                  {onAction && <td className="px-4 py-2">
+                    <button onClick={() => onAction(c)} className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">{actionLabel}</button>
+                  </td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Total Outstanding" value={money(total_outstanding)} color="red" />
-        <StatCard label="Customers Who Owe" value={customers.length} color="amber" />
+        <StatCard label="They Owe Us" value={money(total_outstanding)} color="red" />
+        <StatCard label="Store Credit We Hold" value={money(total_store_credit)} color="emerald" />
       </div>
-      {customers.length === 0 ? (
-        <motion.div variants={fadeUp} className="rounded-xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
-          <p className="text-sm text-slate-400">No outstanding credit</p>
-        </motion.div>
-      ) : (
-        <motion.div variants={fadeUp} className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                <th className="px-4 py-2">Customer</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2">Tier</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2">Last Credit</th><th className="px-4 py-2">Last Repaid</th><th className="px-4 py-2"></th>
-              </tr></thead>
-              <tbody>
-                {customers.map(c => (
-                  <tr key={c.id} className="border-b border-slate-50 dark:border-slate-800/50">
-                    <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">{c.full_name}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{c.phone}</td>
-                    <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.loyalty_tier}</td>
-                    <td className="px-4 py-2 text-right font-mono font-semibold text-red-600 dark:text-red-400">{money(Math.abs(c.credit_balance))}</td>
-                    <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.last_credit_date ? new Date(c.last_credit_date).toLocaleDateString() : '—'}</td>
-                    <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{c.last_repayment_date ? new Date(c.last_repayment_date).toLocaleDateString() : '—'}</td>
-                    <td className="px-4 py-2">
-                      <button onClick={() => openRepay(c)} className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">Record Payment</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-      )}
+
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Customers Who Owe Us ({owe_us.length})</h3>
+      <CreditTable rows={owe_us} colorClass="text-red-600 dark:text-red-400" actionLabel="Record Payment" onAction={openRepay} />
+
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 pt-2">Store Credit We Hold ({we_hold.length})</h3>
+      <CreditTable rows={we_hold} colorClass="text-emerald-600 dark:text-emerald-400" />
 
       {repayCustomer && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}

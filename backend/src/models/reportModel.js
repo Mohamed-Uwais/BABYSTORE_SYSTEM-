@@ -64,14 +64,26 @@ async function creditReport() {
            (SELECT MAX(cl.created_at) FROM customer_ledger cl WHERE cl.customer_id = c.id AND cl.entry_type = 'credit_repaid') AS last_repayment_date
     FROM customers c
     WHERE c.credit_balance != 0
-    ORDER BY ABS(c.credit_balance) DESC
+    ORDER BY c.credit_balance DESC
   `);
 
-  const [[{ total_outstanding }]] = await db.query(
-    'SELECT COALESCE(SUM(ABS(credit_balance)), 0) AS total_outstanding FROM customers WHERE credit_balance != 0'
+  const owe_us = customers.filter(c => Number(c.credit_balance) > 0);
+  const we_hold = customers.filter(c => Number(c.credit_balance) < 0);
+
+  const [[{ total_owed }]] = await db.query(
+    'SELECT COALESCE(SUM(credit_balance), 0) AS total_owed FROM customers WHERE credit_balance > 0'
+  );
+  const [[{ total_held }]] = await db.query(
+    'SELECT COALESCE(SUM(ABS(credit_balance)), 0) AS total_held FROM customers WHERE credit_balance < 0'
   );
 
-  return { customers, total_outstanding };
+  return {
+    customers,
+    owe_us,
+    we_hold,
+    total_outstanding: Number(total_owed),
+    total_store_credit: Number(total_held),
+  };
 }
 
 async function purchaseReport({ from, to, supplier_id, status }) {

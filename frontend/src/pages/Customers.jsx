@@ -248,7 +248,7 @@ export default function Customers() {
                   {detail.customer_type === 'walk_in' && (
                     <button onClick={handleConvertLoyalty} className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100 active:scale-[0.97] dark:border-brand-900/40 dark:bg-brand-900/10 dark:text-brand-400">Convert to Loyalty</button>
                   )}
-                  {Number(detail.credit_balance) !== 0 && (
+                  {Number(detail.credit_balance) > 0 && (
                     <button onClick={() => openRepayment()} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.97] dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-400">Record Payment</button>
                   )}
                 </div>
@@ -259,10 +259,13 @@ export default function Customers() {
                   { label: 'Total Orders', value: detail.total_orders },
                   { label: 'Total Spent', value: money(detail.total_spent), mono: true },
                   { label: 'Loyalty Points', value: detail.loyalty_points_balance },
-                  { label: 'Outstanding Credit', value: Number(detail.credit_balance) !== 0 ? money(Math.abs(detail.credit_balance)) : 'None', mono: Number(detail.credit_balance) !== 0 },
+                  { label: Number(detail.credit_balance) > 0 ? 'Outstanding Credit' : Number(detail.credit_balance) < 0 ? 'Store Credit Available' : 'Credit Balance',
+                    value: Number(detail.credit_balance) !== 0 ? money(Math.abs(detail.credit_balance)) : 'None',
+                    mono: Number(detail.credit_balance) !== 0,
+                    color: Number(detail.credit_balance) > 0 ? 'text-red-600 dark:text-red-400' : Number(detail.credit_balance) < 0 ? 'text-emerald-600 dark:text-emerald-400' : '' },
                 ].map(s => (
                   <div key={s.label} className="rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/50">
-                    <p className={`text-lg font-bold text-slate-900 dark:text-white ${s.mono ? 'font-mono' : ''}`}>{s.value}</p>
+                    <p className={`text-lg font-bold ${s.color || 'text-slate-900 dark:text-white'} ${s.mono ? 'font-mono' : ''}`}>{s.value}</p>
                     <p className="text-[11px] text-slate-400 dark:text-slate-500">{s.label}</p>
                   </div>
                 ))}
