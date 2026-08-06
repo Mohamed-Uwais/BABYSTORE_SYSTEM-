@@ -17,8 +17,10 @@ const PAYMENT_LABELS = {
   cash: 'Cash',
   card: 'Card',
   bank_transfer: 'Bank Transfer',
-  store_credit: 'Credit (Pay Later)',
+  store_credit: 'Store Credit',
+  pay_later: 'Credit (Pay Later)',
   online_gateway: 'Online',
+  cod: 'Cash on Delivery',
 };
 
 export default function Receipt({ orderId, onClose }) {

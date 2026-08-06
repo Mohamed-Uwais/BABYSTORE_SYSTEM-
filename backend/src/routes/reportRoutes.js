@@ -8,5 +8,6 @@ router.get('/purchases', c.purchaseReport);
 router.get('/stock', c.stockReport);
 router.get('/customers', c.customerReport);
 router.get('/profit', c.profitReport);
+router.get('/data-health', c.dataHealthCheck);
 
 module.exports = router;

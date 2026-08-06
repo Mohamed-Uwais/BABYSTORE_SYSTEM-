@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import client from '../api/client';
 import PageWrapper, { staggerContainer, fadeUp } from '../components/PageWrapper';
 
-const PAYMENT_LABELS = { cash: 'Cash', card: 'Card', bank_transfer: 'Bank Transfer', store_credit: 'Credit (Pay Later)' };
+const PAYMENT_LABELS = { cash: 'Cash', card: 'Card', bank_transfer: 'Bank Transfer', store_credit: 'Store Credit', pay_later: 'Credit (Pay Later)', online_gateway: 'Online', cod: 'COD' };
 
 function money(n) { return `Rs. ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`; }
 

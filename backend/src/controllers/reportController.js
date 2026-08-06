@@ -55,4 +55,11 @@ async function profitReport(req, res) {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 }
 
-module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport };
+async function dataHealthCheck(req, res) {
+  try {
+    const data = await reportModel.dataHealthCheck();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+}
+
+module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport, dataHealthCheck };

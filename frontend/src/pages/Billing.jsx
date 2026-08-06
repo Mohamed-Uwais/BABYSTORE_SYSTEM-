@@ -15,7 +15,7 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash', icon: 'banknote' },
   { value: 'card', label: 'Card', icon: 'credit-card' },
   { value: 'bank_transfer', label: 'Bank Transfer', icon: 'landmark' },
-  { value: 'store_credit', label: 'Credit (Pay Later)', icon: 'gift' },
+  { value: 'pay_later', label: 'Credit (Pay Later)', icon: 'gift' },
 ];
 
 function money(n) {
@@ -568,7 +568,7 @@ export default function Billing() {
     setSuggestions([]);
     setShowSuggestions(false);
     setCustomerMode('walkin');
-    setPayments((prev) => prev.filter((p) => p.method !== 'store_credit'));
+    setPayments((prev) => prev.filter((p) => p.method !== 'store_credit' && p.method !== 'pay_later'));
   }
 
   const [splitMode, setSplitMode] = useState(false);
@@ -614,8 +614,10 @@ export default function Billing() {
     }
   }, [grandTotal, splitMode]);
 
-  const hasStoreCreditPayment = payments.some((p) => p.method === 'store_credit');
-  const storeCreditBlocked = hasStoreCreditPayment && (!customer || customerMode === 'walkin');
+  const hasPayLater = payments.some((p) => p.method === 'pay_later');
+  const hasStoreCredit = payments.some((p) => p.method === 'store_credit');
+  const payLaterBlocked = hasPayLater && (!customer || customerMode === 'walkin' || customer.customer_type !== 'loyalty');
+  const storeCreditBlocked = payLaterBlocked;
 
   const deliveryFieldsValid = fulfillment === 'pickup' || (
     receiverName.trim() && receiverPhone.trim() && receiverAddress.trim()
@@ -993,10 +995,10 @@ export default function Billing() {
                   </div>
 
                   {/* Credit blocked warning */}
-                  {storeCreditBlocked && customerMode === 'walkin' && (
+                  {payLaterBlocked && customerMode === 'walkin' && (
                     <div className="mb-2 flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2 dark:bg-amber-900/20">
                       <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Credit requires a loyalty customer</span>
-                      <button onClick={() => { setCustomerMode('loyalty'); setPayments(prev => prev.filter(p => p.method !== 'store_credit')); setTimeout(() => phoneRef.current?.focus(), 100); }}
+                      <button onClick={() => { setCustomerMode('loyalty'); setPayments(prev => prev.filter(p => p.method !== 'pay_later')); setTimeout(() => phoneRef.current?.focus(), 100); }}
                         className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700">Switch to Loyalty</button>
                     </div>
                   )}
@@ -1247,17 +1249,18 @@ export default function Billing() {
                   )}
                 </AnimatePresence>
                 {payments.length === 0 && <p className="mt-2 text-sm text-slate-400">Tap a payment method to continue.</p>}
-                {storeCreditBlocked && (
+                {payLaterBlocked && (
                   <p className="mt-2 text-xs text-red-600 dark:text-red-400">
                     Only loyalty customers can buy on credit.
                   </p>
                 )}
-                {hasStoreCreditPayment && !storeCreditBlocked && Number(customer?.credit_balance) !== 0 && (() => {
-                  const creditAmt = payments.filter(p => p.method === 'store_credit').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-                  const newBalance = Math.abs(Number(customer.credit_balance)) + creditAmt;
+                {hasPayLater && !payLaterBlocked && customer && (() => {
+                  const creditAmt = payments.filter(p => p.method === 'pay_later').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                  const currentOwed = Math.max(0, Number(customer.credit_balance));
+                  const newBalance = currentOwed + creditAmt;
                   return (
                     <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-                      Adding {money(creditAmt)} to existing credit of {money(Math.abs(customer.credit_balance))}. New balance will be {money(newBalance)}.
+                      Adding {money(creditAmt)} to outstanding {money(currentOwed)}. New balance: {money(newBalance)}.
                     </div>
                   );
                 })()}
@@ -1424,6 +1427,22 @@ export default function Billing() {
                   placeholder="Manual discount"
                   className="w-28 rounded-lg border border-slate-200 px-2 py-1 text-right font-mono text-xs outline-none transition focus:border-brand-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                 {manualDiscount > 0 && <span className="text-xs font-medium text-red-500">−{money(manualDiscount)}</span>}
+              </div>
+            )}
+            {isOwner && manualDiscount > 0 && customer && Number(customer.credit_balance) < 0 && manualDiscount > subtotal * 0.2 && !hasStoreCredit && (
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-900/20">
+                <span className="text-xs text-amber-700 dark:text-amber-400">Customer has {money(Math.abs(customer.credit_balance))} store credit — apply that instead?</span>
+                <button onClick={() => {
+                  setManualDiscountValue('');
+                  const creditAvail = Math.abs(Number(customer.credit_balance));
+                  const applyAmt = Math.min(creditAvail, grandTotal + manualDiscount);
+                  if (applyAmt <= 0) return;
+                  setSplitMode(true);
+                  const otherPayments = payments.filter(p => p.method !== 'store_credit');
+                  const remaining = grandTotal + manualDiscount - applyAmt;
+                  setPayments([{ method: 'store_credit', amount: applyAmt.toFixed(2) }, ...(remaining > 0 ? (otherPayments.length ? otherPayments : [{ method: 'cash', amount: remaining.toFixed(2) }]) : [])]);
+                }}
+                  className="shrink-0 rounded-lg bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700">Apply Credit</button>
               </div>
             )}
             {returnMode && returnTotal > 0 && (

@@ -25,6 +25,7 @@ const TABS = [
   { key: 'customers', label: 'Customers' },
   { key: 'credit', label: 'Credit' },
   { key: 'purchases', label: 'Purchases' },
+  { key: 'data_health', label: 'Data Health' },
 ];
 
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -789,6 +790,98 @@ function OrdersTable({ orders }) {
   );
 }
 
+// ============ DATA HEALTH ============
+function DataHealthReport() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const { addToast } = useToast();
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await client.get('/reports/data-health');
+      setData(res.data.data);
+    } catch { addToast('Failed to load data health check', 'error'); }
+    finally { setLoading(false); }
+  }
+
+  if (loading) return <ReportSkeleton />;
+  if (!data) return null;
+
+  const { credit_mismatches, points_mismatches, orphaned_payments } = data;
+  const allClear = credit_mismatches.length === 0 && points_mismatches.length === 0 && orphaned_payments.length === 0;
+
+  return (
+    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Credit Mismatches" value={credit_mismatches.length} color={credit_mismatches.length > 0 ? 'red' : 'emerald'} />
+        <StatCard label="Points Mismatches" value={points_mismatches.length} color={points_mismatches.length > 0 ? 'amber' : 'emerald'} />
+        <StatCard label="Orphaned Payments" value={orphaned_payments.length} color={orphaned_payments.length > 0 ? 'red' : 'emerald'} />
+      </div>
+
+      {allClear && (
+        <motion.div variants={fadeUp} className="rounded-xl border border-dashed border-emerald-300 py-12 text-center dark:border-emerald-700">
+          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">All clear — no data inconsistencies found</p>
+        </motion.div>
+      )}
+
+      {credit_mismatches.length > 0 && (
+        <motion.div variants={fadeUp}>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-500">Credit Balance Mismatches</h3>
+          <p className="mb-3 text-xs text-slate-400">customers.credit_balance differs from SUM(customer_ledger.credit_delta)</p>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                  <th className="px-4 py-2">Customer</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2 text-right">Stored</th><th className="px-4 py-2 text-right">Ledger Sum</th><th className="px-4 py-2 text-right">Drift</th>
+                </tr></thead>
+                <tbody>
+                  {credit_mismatches.map(c => (
+                    <tr key={c.id} className="border-b border-slate-50 dark:border-slate-800/50">
+                      <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">{c.full_name}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-slate-500">{c.phone}</td>
+                      <td className="px-4 py-2 text-right font-mono">{money(c.stored_balance)}</td>
+                      <td className="px-4 py-2 text-right font-mono">{money(c.ledger_balance)}</td>
+                      <td className="px-4 py-2 text-right font-mono font-semibold text-red-600 dark:text-red-400">{money(c.drift)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {points_mismatches.length > 0 && (
+        <motion.div variants={fadeUp}>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-500">Points Balance Mismatches</h3>
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                  <th className="px-4 py-2">Customer</th><th className="px-4 py-2">Phone</th><th className="px-4 py-2 text-right">Stored</th><th className="px-4 py-2 text-right">Ledger Sum</th><th className="px-4 py-2 text-right">Drift</th>
+                </tr></thead>
+                <tbody>
+                  {points_mismatches.map(c => (
+                    <tr key={c.id} className="border-b border-slate-50 dark:border-slate-800/50">
+                      <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">{c.full_name}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-slate-500">{c.phone}</td>
+                      <td className="px-4 py-2 text-right font-mono">{c.stored_points}</td>
+                      <td className="px-4 py-2 text-right font-mono">{c.ledger_points}</td>
+                      <td className="px-4 py-2 text-right font-mono font-semibold text-amber-600 dark:text-amber-400">{c.drift}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
 function ReportSkeleton() {
   return (
     <div className="space-y-4">
@@ -813,6 +906,7 @@ export default function Reports() {
     customers: CustomerReport,
     credit: CreditReport,
     purchases: PurchaseReport,
+    data_health: DataHealthReport,
   }[tab];
 
   return (

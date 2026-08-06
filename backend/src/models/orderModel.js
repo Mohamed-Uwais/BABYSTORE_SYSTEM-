@@ -18,8 +18,8 @@ async function generateOrderNumber(connection) {
  *  - inserts order + order_items
  *  - deducts stock (product_variants.current_stock) and logs stock_movements
  *  - inserts order_payments (supports split payments)
- *  - if payment_method includes 'store_credit', ONLY allowed for loyalty customers,
- *    and it increases their credit_balance (they now owe the shop)
+ *  - 'store_credit' = customer spends money we hold (negative credit_balance → closer to 0)
+ *  - 'pay_later' = customer owes us (increases credit_balance), loyalty only
  *  - awards loyalty points (1 point per 100 LKR spent, tunable) for loyalty customers
  *  - inserts order_deliveries if fulfillment_type is courier_delivery or self_delivery
  *
@@ -52,33 +52,36 @@ async function createOrder(payload) {
       throw new Error('At least one payment method is required');
     }
 
-    // --- 1. Validate customer for credit/store-credit payments ---
-    const usesCredit = payments.some(p => p.payment_method === 'store_credit');
-    let customerCreditBalance = 0;
-    if (usesCredit) {
-      if (!customer_id) throw new Error('Credit payment requires a registered customer');
+    // --- 1. Validate customer for store_credit / pay_later payments ---
+    const usesStoreCredit = payments.some(p => p.payment_method === 'store_credit');
+    const usesPayLater = payments.some(p => p.payment_method === 'pay_later');
+    if (usesStoreCredit) {
+      if (!customer_id) throw new Error('Store credit payment requires a registered customer');
+      const [[customer]] = await connection.query(
+        'SELECT credit_balance FROM customers WHERE id = ? FOR UPDATE', [customer_id]
+      );
+      if (!customer) throw new Error('Customer not found');
+      const balance = Number(customer.credit_balance);
+      if (balance >= 0) throw new Error('Customer has no store credit available');
+      const creditAmt = payments.filter(p => p.payment_method === 'store_credit').reduce((s, p) => s + parseFloat(p.amount), 0);
+      const available = Math.abs(balance);
+      if (creditAmt > available + 0.5) {
+        throw new Error(`Store credit insufficient: available Rs. ${available.toFixed(2)}, requested Rs. ${creditAmt.toFixed(2)}`);
+      }
+    }
+    if (usesPayLater) {
+      if (!customer_id) throw new Error('Pay later requires a registered customer');
       const [[customer]] = await connection.query(
         'SELECT customer_type, credit_balance, credit_limit FROM customers WHERE id = ? FOR UPDATE', [customer_id]
       );
-      if (!customer) throw new Error('Customer not found');
-      customerCreditBalance = Number(customer.credit_balance);
-      const creditAmt = payments.filter(p => p.payment_method === 'store_credit').reduce((s, p) => s + parseFloat(p.amount), 0);
-      if (customerCreditBalance < 0) {
-        // Customer has store credit (negative balance) — redeem it
-        const available = Math.abs(customerCreditBalance);
-        if (creditAmt > available + 0.5) {
-          throw new Error(`Store credit insufficient: available Rs. ${available.toFixed(2)}, requested Rs. ${creditAmt.toFixed(2)}`);
-        }
-      } else {
-        // Buy on credit (increases balance) — only for loyalty
-        if (customer.customer_type !== 'loyalty') {
-          throw new Error('Only loyalty customers can buy on credit');
-        }
-        if (customer.credit_limit && customer.credit_limit > 0) {
-          const newBalance = customerCreditBalance + creditAmt;
-          if (newBalance > Number(customer.credit_limit) + 0.5) {
-            throw new Error(`Credit limit exceeded: limit Rs. ${Number(customer.credit_limit).toFixed(2)}, would owe Rs. ${newBalance.toFixed(2)}`);
-          }
+      if (!customer || customer.customer_type !== 'loyalty') {
+        throw new Error('Only loyalty customers can buy on credit');
+      }
+      const creditAmt = payments.filter(p => p.payment_method === 'pay_later').reduce((s, p) => s + parseFloat(p.amount), 0);
+      if (customer.credit_limit && customer.credit_limit > 0) {
+        const newBalance = Number(customer.credit_balance) + creditAmt;
+        if (newBalance > Number(customer.credit_limit) + 0.5) {
+          throw new Error(`Credit limit exceeded: limit Rs. ${Number(customer.credit_limit).toFixed(2)}, would owe Rs. ${newBalance.toFixed(2)}`);
         }
       }
     }
@@ -165,35 +168,28 @@ async function createOrder(payload) {
         });
       }
 
-      const creditPayment = payments.find(p => p.payment_method === 'store_credit');
-      if (creditPayment) {
-        const [[existingCredit]] = await connection.query(
-          `SELECT id FROM customer_ledger WHERE customer_id = ? AND entry_type IN ('credit_issued','credit_repaid') AND reference_type = 'order' AND reference_id = ?`,
-          [customer_id, orderId]
-        );
-        if (!existingCredit) {
-          if (customerCreditBalance < 0) {
-            // Redeeming store credit (negative balance → closer to zero)
-            const redeemAmt = parseFloat(creditPayment.amount);
-            await customerModel.addLedgerEntry(connection, {
-              customer_id, entry_type: 'credit_repaid', credit_delta: redeemAmt,
-              reference_type: 'order', reference_id: orderId,
-              notes: `Store credit redeemed — order ${order_number}`,
-              created_by: cashier_id
-            });
-          } else {
-            // Buy on credit (increases balance)
-            const creditAmount = fulfillment_type === 'courier_delivery'
-              ? (subtotal - discount_total)
-              : parseFloat(creditPayment.amount);
-            await customerModel.addLedgerEntry(connection, {
-              customer_id, entry_type: 'credit_issued', credit_delta: creditAmount,
-              reference_type: 'order', reference_id: orderId,
-              notes: `Bought on credit — order ${order_number}${fulfillment_type === 'courier_delivery' ? ' (excl. delivery fee)' : ''}`,
-              created_by: cashier_id
-            });
-          }
-        }
+      const storeCreditPay = payments.find(p => p.payment_method === 'store_credit');
+      if (storeCreditPay) {
+        const redeemAmt = parseFloat(storeCreditPay.amount);
+        await customerModel.addLedgerEntry(connection, {
+          customer_id, entry_type: 'credit_repaid', credit_delta: redeemAmt,
+          reference_type: 'order', reference_id: orderId,
+          notes: `Store credit redeemed — order ${order_number}`,
+          created_by: cashier_id
+        });
+      }
+
+      const payLaterPay = payments.find(p => p.payment_method === 'pay_later');
+      if (payLaterPay) {
+        const creditAmount = fulfillment_type === 'courier_delivery'
+          ? (subtotal - discount_total)
+          : parseFloat(payLaterPay.amount);
+        await customerModel.addLedgerEntry(connection, {
+          customer_id, entry_type: 'credit_issued', credit_delta: creditAmount,
+          reference_type: 'order', reference_id: orderId,
+          notes: `Bought on credit — order ${order_number}${fulfillment_type === 'courier_delivery' ? ' (excl. delivery fee)' : ''}`,
+          created_by: cashier_id
+        });
       }
     }
 

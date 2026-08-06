@@ -335,4 +335,42 @@ async function profitReport({ from, to }) {
   };
 }
 
-module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport };
+async function dataHealthCheck() {
+  const [creditMismatches] = await db.query(`
+    SELECT c.id, c.full_name, c.phone, c.credit_balance AS stored_balance,
+           COALESCE(SUM(cl.credit_delta), 0) AS ledger_balance,
+           c.credit_balance - COALESCE(SUM(cl.credit_delta), 0) AS drift
+    FROM customers c
+    LEFT JOIN customer_ledger cl ON cl.customer_id = c.id
+    GROUP BY c.id
+    HAVING ABS(c.credit_balance - COALESCE(SUM(cl.credit_delta), 0)) > 0.01
+    ORDER BY ABS(drift) DESC
+  `);
+
+  const [pointsMismatches] = await db.query(`
+    SELECT c.id, c.full_name, c.phone, c.loyalty_points_balance AS stored_points,
+           COALESCE(SUM(cl.points_delta), 0) AS ledger_points,
+           c.loyalty_points_balance - COALESCE(SUM(cl.points_delta), 0) AS drift
+    FROM customers c
+    LEFT JOIN customer_ledger cl ON cl.customer_id = c.id
+    GROUP BY c.id
+    HAVING ABS(c.loyalty_points_balance - COALESCE(SUM(cl.points_delta), 0)) > 0.5
+    ORDER BY ABS(drift) DESC
+  `);
+
+  const [orphanedPayments] = await db.query(`
+    SELECT op.id, op.order_id, op.payment_method, op.amount, op.created_at
+    FROM order_payments op
+    LEFT JOIN orders o ON o.id = op.order_id
+    WHERE o.id IS NULL
+    LIMIT 20
+  `);
+
+  return {
+    credit_mismatches: creditMismatches.map(r => ({ ...r, stored_balance: Number(r.stored_balance), ledger_balance: Number(r.ledger_balance), drift: Number(r.drift) })),
+    points_mismatches: pointsMismatches.map(r => ({ ...r, stored_points: Number(r.stored_points), ledger_points: Number(r.ledger_points), drift: Number(r.drift) })),
+    orphaned_payments: orphanedPayments.map(r => ({ ...r, amount: Number(r.amount) })),
+  };
+}
+
+module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport, dataHealthCheck };
