@@ -62,4 +62,25 @@ async function dataHealthCheck(req, res) {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 }
 
-module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport, dataHealthCheck };
+async function fixCreditBalances(req, res) {
+  try {
+    const data = await reportModel.fixCreditBalances();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+}
+
+async function fixPointsBalances(req, res) {
+  try {
+    const data = await reportModel.fixPointsBalances();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+}
+
+async function fixStockBalances(req, res) {
+  try {
+    const data = await reportModel.fixStockBalances();
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+}
+
+module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport, dataHealthCheck, fixCreditBalances, fixPointsBalances, fixStockBalances };

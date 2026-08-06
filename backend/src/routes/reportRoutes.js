@@ -9,5 +9,8 @@ router.get('/stock', c.stockReport);
 router.get('/customers', c.customerReport);
 router.get('/profit', c.profitReport);
 router.get('/data-health', c.dataHealthCheck);
+router.post('/data-health/fix-credit', c.fixCreditBalances);
+router.post('/data-health/fix-points', c.fixPointsBalances);
+router.post('/data-health/fix-stock', c.fixStockBalances);
 
 module.exports = router;

@@ -35,10 +35,48 @@ const SYNONYM_MAP = {
   'shampoo': 'baby shampoo', 'soap': 'baby soap', 'wash': 'baby wash',
 };
 
+function shouldSkipToAI(message) {
+  const lower = message.toLowerCase();
+  const words = lower.split(/\s+/);
+
+  // Guard 1: Order-intent keywords → AI handles the full order flow
+  const ORDER_WORDS = ['order', 'buy', 'want', 'need', 'send', 'deliver', 'venum', 'ona', 'oni', 'place'];
+  if (ORDER_WORDS.some(w => words.includes(w)) || /place\s*order/i.test(lower)) return 'order_intent';
+
+  // Guard 2: Personal data detected (phone number, "my name is", "address is/:-")
+  if (/0\d{9}/.test(message) || /\+94\d{9}/.test(message)) return 'phone_number';
+  if (/my\s*name\s*is/i.test(message)) return 'personal_name';
+  if (/address\s*[:\-]/i.test(message) || /address\s+is\b/i.test(message)) return 'personal_address';
+
+  // Guard 3: Message too long (>15 words) → conversational, send to AI
+  if (words.length > 15) return 'long_message';
+
+  return null;
+}
+
 async function match(message, customer) {
+  const skipReason = shouldSkipToAI(message);
+  if (skipReason) {
+    logger.info(`[PatternMatcher] Skipping to AI: ${skipReason}`);
+    return null;
+  }
+
   const intent = classify(message);
 
   if (intent) {
+    // Guard: contact_info must be the customer ASKING for our info, not providing theirs
+    if (intent === 'contact_info') {
+      const lower = message.toLowerCase();
+      const isProvidingData = /\bmy\b/i.test(message) || /\bmine\b/i.test(message)
+        || /[:\-]\s*\S/.test(message) || /mobile\s*[-:]/i.test(message);
+      const isAskingUs = /\b(your|you|shop|store)\b/i.test(message)
+        || /\b(what|where|how|which)\b/i.test(message);
+      if (isProvidingData && !isAskingUs) {
+        logger.info(`[PatternMatcher] contact_info suppressed: customer providing data`);
+        return null;
+      }
+    }
+
     try {
       switch (intent) {
         case 'greeting':      return await handleGreeting(customer);

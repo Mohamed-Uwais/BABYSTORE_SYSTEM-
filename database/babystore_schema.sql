@@ -229,8 +229,8 @@ CREATE TABLE customers (
     customer_type          ENUM('walk_in', 'loyalty') NOT NULL DEFAULT 'walk_in',
     loyalty_tier            ENUM('none', 'silver', 'gold', 'platinum') NOT NULL DEFAULT 'none',
     loyalty_points_balance  INT NOT NULL DEFAULT 0,        -- denormalized, kept in sync by customer_ledger
-    credit_balance          DECIMAL(10,2) NOT NULL DEFAULT 0, -- denormalized running balance (positive = customer owes shop)
-    credit_limit            DECIMAL(10,2) DEFAULT NULL,        -- optional max credit allowed (NULL = no limit)
+    credit_balance          DECIMAL(10,2) NOT NULL DEFAULT 0, -- positive = customer owes shop, negative = store credit we hold
+    credit_limit            DECIMAL(10,2) DEFAULT NULL,
     source_channel           ENUM('pos', 'whatsapp', 'instagram', 'messenger', 'website') NOT NULL DEFAULT 'pos',
     created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at                 TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -313,6 +313,7 @@ CREATE TABLE orders (
     delivery_zone_id       INT UNSIGNED NULL,
 
     notes                   TEXT,
+    payment_slip_url         VARCHAR(500),
     created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at                 TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -331,6 +332,7 @@ CREATE TABLE order_items (
     unit_price      DECIMAL(10,2) NOT NULL,          -- price at time of sale (snapshot, protects history from later price changes)
     discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
     line_total      DECIMAL(10,2) NOT NULL,
+    cost_price_snapshot DECIMAL(10,2) DEFAULT NULL,    -- cost at time of sale for profit reporting
 
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY (variant_id) REFERENCES product_variants(id)
@@ -340,7 +342,7 @@ CREATE TABLE order_items (
 CREATE TABLE order_payments (
     id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     order_id        INT UNSIGNED NOT NULL,
-    payment_method  ENUM('cash', 'card', 'bank_transfer', 'store_credit', 'online_gateway') NOT NULL,
+    payment_method  ENUM('cash', 'card', 'bank_transfer', 'store_credit', 'pay_later', 'online_gateway', 'cod') NOT NULL,
     amount          DECIMAL(10,2) NOT NULL,
     reference_note  VARCHAR(255),                     -- e.g. bank slip ref, card last 4
     paid_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -396,12 +398,14 @@ CREATE TABLE order_returns (
 CREATE TABLE chatbot_conversations (
     id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     customer_id     INT UNSIGNED NULL,                  -- linked once phone is captured
-    channel         ENUM('whatsapp', 'instagram', 'messenger') NOT NULL,
+    channel         ENUM('whatsapp', 'instagram', 'messenger', 'simulator', 'web') NOT NULL,
     channel_user_id  VARCHAR(100) NOT NULL,               -- platform-specific sender ID
     status            ENUM('active', 'ghost_pending', 'closed') NOT NULL DEFAULT 'active',
+    owner_takeover     TINYINT(1) DEFAULT 0,
+    ghost_nudge_count  TINYINT DEFAULT 0,
     last_message_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    ghost_nudge_sent_at TIMESTAMP NULL,                   -- when the auto follow-up nudge was sent
-    confusion_count       INT UNSIGNED NOT NULL DEFAULT 0, -- increments on repeated unclear replies, triggers owner alert
+    ghost_nudge_sent_at TIMESTAMP NULL,
+    confusion_count       INT UNSIGNED NOT NULL DEFAULT 0,
     created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (customer_id) REFERENCES customers(id),
@@ -414,6 +418,10 @@ CREATE TABLE chatbot_messages (
     conversation_id  INT UNSIGNED NOT NULL,
     sender          ENUM('customer', 'bot', 'owner') NOT NULL,
     message_text     TEXT,
+    message_type     VARCHAR(20) DEFAULT 'text',
+    handled_by       ENUM('pattern_matcher', 'gemini', 'claude', 'fallback', 'owner') DEFAULT NULL,
+    intent           VARCHAR(50) DEFAULT NULL,
+    response_time_ms INT UNSIGNED DEFAULT NULL,
     image_url        VARCHAR(500),
     created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -430,12 +438,14 @@ CREATE TABLE blog_posts (
     title           VARCHAR(200) NOT NULL,
     slug            VARCHAR(220) NOT NULL UNIQUE,
     cover_image_url  VARCHAR(500),
+    excerpt           VARCHAR(500),
     content           LONGTEXT NOT NULL,
     meta_description   VARCHAR(300),
     is_published         BOOLEAN NOT NULL DEFAULT FALSE,
     published_at           TIMESTAMP NULL,
     created_by                INT UNSIGNED NULL,
     created_at                    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at                     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     FOREIGN KEY (created_by) REFERENCES users(id)
 ) ENGINE=InnoDB;
@@ -463,6 +473,179 @@ CREATE TABLE store_settings (
 
 INSERT IGNORE INTO store_settings (id, store_name, currency_symbol, receipt_footer)
 VALUES (1, 'LITTORA', 'Rs.', 'Thank you for shopping with us!');
+
+-- ============================================================================
+-- SECTION 11: PRODUCT IMAGES (multi-image per product)
+-- ============================================================================
+
+CREATE TABLE product_images (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    product_id      INT UNSIGNED NOT NULL,
+    variant_id      INT UNSIGNED DEFAULT NULL,
+    image_url       VARCHAR(500) NOT NULL,
+    sort_order      INT DEFAULT 0,
+    is_primary      TINYINT(1) DEFAULT 0,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- SECTION 12: ORDER STATUS HISTORY (audit trail)
+-- ============================================================================
+
+CREATE TABLE order_status_history (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    order_id    INT UNSIGNED NOT NULL,
+    status      VARCHAR(50) NOT NULL,
+    changed_by  INT UNSIGNED DEFAULT NULL,
+    notes       VARCHAR(255) DEFAULT NULL,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (changed_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- SECTION 13: PROMOTIONS
+-- ============================================================================
+
+CREATE TABLE promotions (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    title           VARCHAR(200) NOT NULL,
+    description     TEXT,
+    promo_type      ENUM('percentage_discount','fixed_discount','buy_x_get_y','bundle_deal','coupon_code','free_delivery') NOT NULL,
+    coupon_code     VARCHAR(50) UNIQUE DEFAULT NULL,
+    max_uses        INT UNSIGNED DEFAULT NULL,
+    times_used      INT UNSIGNED NOT NULL DEFAULT 0,
+    discount_value  DECIMAL(10,2) DEFAULT NULL,
+    buy_quantity    INT UNSIGNED DEFAULT NULL,
+    get_quantity    INT UNSIGNED DEFAULT NULL,
+    bundle_price    DECIMAL(10,2) DEFAULT NULL,
+    min_order_amount DECIMAL(10,2) DEFAULT NULL,
+    starts_at       TIMESTAMP NOT NULL,
+    ends_at         TIMESTAMP NOT NULL,
+    is_active       TINYINT(1) NOT NULL DEFAULT 1,
+    banner_text     VARCHAR(255) DEFAULT NULL,
+    banner_color    VARCHAR(20) DEFAULT NULL,
+    show_on_homepage TINYINT(1) NOT NULL DEFAULT 0,
+    created_by      INT UNSIGNED DEFAULT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE promotion_targets (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    promotion_id    INT UNSIGNED NOT NULL,
+    target_type     ENUM('product','variant','category','brand','all') NOT NULL,
+    target_id       INT UNSIGNED DEFAULT NULL,
+    FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE promotion_bundle_items (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    promotion_id    INT UNSIGNED NOT NULL,
+    variant_id      INT UNSIGNED NOT NULL,
+    quantity        INT UNSIGNED NOT NULL DEFAULT 1,
+    FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE CASCADE,
+    FOREIGN KEY (variant_id) REFERENCES product_variants(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE promotion_usage (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    promotion_id    INT UNSIGNED NOT NULL,
+    customer_id     INT UNSIGNED DEFAULT NULL,
+    order_id        INT UNSIGNED NOT NULL,
+    discount_applied DECIMAL(10,2) NOT NULL,
+    used_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (promotion_id) REFERENCES promotions(id),
+    FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- SECTION 14: USER PERMISSIONS
+-- ============================================================================
+
+CREATE TABLE user_permissions (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id     INT UNSIGNED NOT NULL,
+    permission  VARCHAR(50) NOT NULL,
+    UNIQUE KEY uq_user_permission (user_id, permission),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- SECTION 15: WEBSITE CONTENT & CONTACT MESSAGES
+-- ============================================================================
+
+CREATE TABLE website_content (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    section_key     VARCHAR(100) NOT NULL UNIQUE,
+    content         JSON NOT NULL,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE contact_messages (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name        VARCHAR(100) NOT NULL,
+    phone       VARCHAR(20) DEFAULT NULL,
+    email       VARCHAR(100) DEFAULT NULL,
+    message     TEXT NOT NULL,
+    is_read     TINYINT(1) DEFAULT 0,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- SECTION 16: MESSAGE ROUTING LOG (chatbot analytics)
+-- ============================================================================
+
+CREATE TABLE message_routing_log (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    conversation_id INT UNSIGNED NOT NULL,
+    message_text    TEXT,
+    handled_by      ENUM('pattern_matcher','gemini','claude','fallback') NOT NULL,
+    intent          VARCHAR(50) DEFAULT NULL,
+    response_time_ms INT UNSIGNED DEFAULT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_id) REFERENCES chatbot_conversations(id)
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- SECTION 17: QUOTATIONS
+-- ============================================================================
+
+CREATE TABLE quotations (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    quotation_number VARCHAR(30) NOT NULL UNIQUE,
+    customer_id     INT UNSIGNED DEFAULT NULL,
+    pricing_mode    ENUM('retail','wholesale') NOT NULL DEFAULT 'retail',
+    items           JSON NOT NULL,
+    subtotal        DECIMAL(10,2) NOT NULL DEFAULT 0,
+    delivery_fee    DECIMAL(10,2) NOT NULL DEFAULT 0,
+    discount_total  DECIMAL(10,2) NOT NULL DEFAULT 0,
+    grand_total     DECIMAL(10,2) NOT NULL DEFAULT 0,
+    notes           TEXT,
+    status          ENUM('draft','sent','accepted','expired','converted') NOT NULL DEFAULT 'draft',
+    valid_until     DATE DEFAULT NULL,
+    converted_order_id INT UNSIGNED DEFAULT NULL,
+    created_by      INT UNSIGNED DEFAULT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (converted_order_id) REFERENCES orders(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ============================================================================
+-- SECTION 18: SCHEMA MIGRATIONS (tracked by backend/src/migrate.js)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    filename    VARCHAR(255) NOT NULL UNIQUE,
+    applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
 
 SET FOREIGN_KEY_CHECKS = 1;
 

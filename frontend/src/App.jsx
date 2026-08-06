@@ -17,6 +17,7 @@ import Promotions from './pages/Promotions';
 import Conversations from './pages/Conversations';
 import Quotations from './pages/Quotations';
 import WebsiteContent from './pages/WebsiteContent';
+import DataHealth from './pages/DataHealth';
 import ProtectedRoute from './components/ProtectedRoute';
 import PermissionRoute from './components/PermissionRoute';
 import Sidebar from './components/Sidebar';
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/customers" element={<PermissionRoute permission="customers"><Customers /></PermissionRoute>} />
           <Route path="/settings" element={<PermissionRoute permission="settings"><Settings /></PermissionRoute>} />
           <Route path="/settings/content" element={<PermissionRoute permission="settings"><WebsiteContent /></PermissionRoute>} />
+          <Route path="/settings/data-health" element={<PermissionRoute permission="settings"><DataHealth /></PermissionRoute>} />
           <Route path="/reports" element={<PermissionRoute permission="reports"><Reports /></PermissionRoute>} />
           <Route path="/stock-toggle" element={<PermissionRoute permission="inventory"><StockToggle /></PermissionRoute>} />
           <Route path="/daily-summary" element={<PermissionRoute permission="reports"><DailySummary /></PermissionRoute>} />

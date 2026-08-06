@@ -18,6 +18,8 @@ const PAYMENT_METHODS = [
   { value: 'pay_later', label: 'Credit (Pay Later)', icon: 'gift' },
 ];
 
+const CREDIT_WARNING_THRESHOLD = 25000;
+
 function money(n) {
   return `Rs. ${Number(n || 0).toFixed(2)}`;
 }
@@ -949,7 +951,12 @@ export default function Billing() {
                     </div>
                     <button onClick={clearCustomer} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">Clear</button>
                   </div>
-                  {Number(customer.credit_balance) > 0 && (
+                  {Number(customer.credit_balance) >= CREDIT_WARNING_THRESHOLD && (
+                    <div className="mt-2 flex items-center gap-2 rounded-lg border border-red-300 bg-red-100 px-3 py-2.5 dark:border-red-800 dark:bg-red-900/30">
+                      <span className="text-sm font-semibold text-red-700 dark:text-red-400">⚠️ This customer has {money(customer.credit_balance)} outstanding</span>
+                    </div>
+                  )}
+                  {Number(customer.credit_balance) > 0 && Number(customer.credit_balance) < CREDIT_WARNING_THRESHOLD && (
                     <div className="mt-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-900/20">
                       <span className="text-xs font-medium text-red-700 dark:text-red-400">⚠️ This customer owes {money(customer.credit_balance)}</span>
                     </div>
@@ -1495,6 +1502,71 @@ export default function Billing() {
               <span>Remaining</span>
               <span className={`font-mono ${Math.abs(remaining) < 0.5 ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>{money(remaining)}</span>
             </div>
+
+            {/* Outstanding credit block */}
+            {customer && Number(customer.credit_balance) !== 0 && (() => {
+              const bal = Number(customer.credit_balance);
+              const creditOnThisSale = payments.filter(p => p.method === 'pay_later').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+              const cashPart = payments.filter(p => p.method !== 'pay_later' && p.method !== 'store_credit').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+              const storeCreditPart = payments.filter(p => p.method === 'store_credit').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+
+              if (bal < 0) {
+                const available = Math.abs(bal);
+                const alreadyApplied = storeCreditPart > 0;
+                if (alreadyApplied) return null;
+                return (
+                  <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-800 dark:bg-emerald-900/10">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-emerald-700 dark:text-emerald-400">Store Credit Available</span>
+                      <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">−{money(available)}</span>
+                    </div>
+                    {grandTotal > 0 && (
+                      <div className="mt-1 flex justify-between border-t border-emerald-200 pt-1 text-sm font-semibold dark:border-emerald-800">
+                        <span className="text-emerald-700 dark:text-emerald-400">Amount Due</span>
+                        <span className="font-mono text-emerald-700 dark:text-emerald-300">{money(Math.max(0, grandTotal - available))}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              if (creditOnThisSale > 0) {
+                const newBalance = bal + creditOnThisSale;
+                return (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-900/10">
+                    {cashPart > 0 && (
+                      <>
+                        <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                          <span>Paid — Cash/Card</span>
+                          <span className="font-mono">{money(cashPart)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-amber-700 dark:text-amber-400">
+                          <span>On Credit</span>
+                          <span className="font-mono">{money(creditOnThisSale)}</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <span>Previous Outstanding</span>
+                      <span className="font-mono text-red-600 dark:text-red-400">{money(bal)}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between border-t border-amber-200 pt-1 text-sm font-semibold dark:border-amber-800">
+                      <span className="text-red-700 dark:text-red-400">Total Outstanding</span>
+                      <span className="font-mono text-red-600 dark:text-red-400">{money(newBalance)}</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/30">
+                  <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                    <span>Previous Outstanding</span>
+                    <span className="font-mono text-amber-600 dark:text-amber-400">{money(bal)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {error && <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">{error}</div>}
             {successOrder && (

@@ -297,6 +297,48 @@ export default function Receipt({ orderId, onClose }) {
               </div>
             )}
 
+            {/* Outstanding credit balance */}
+            {order.customer_credit_balance != null && Number(order.customer_credit_balance) !== 0 && (() => {
+              const bal = Number(order.customer_credit_balance);
+              const creditOnSale = order.payments.filter(p => p.payment_method === 'pay_later').reduce((s, p) => s + Number(p.amount), 0);
+              if (bal > 0 || creditOnSale > 0) {
+                const prevBal = bal - creditOnSale;
+                return (
+                  <>
+                    <div className="my-2 border-t border-dashed border-slate-400" />
+                    {prevBal > 0 && (
+                      <div className="flex justify-between">
+                        <span>Previous Balance</span>
+                        <span>{money(prevBal, cur)}</span>
+                      </div>
+                    )}
+                    {creditOnSale > 0 && (
+                      <div className="flex justify-between">
+                        <span>This Sale (Credit)</span>
+                        <span>{money(creditOnSale, cur)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold">
+                      <span>TOTAL OUTSTANDING</span>
+                      <span>{money(bal, cur)}</span>
+                    </div>
+                  </>
+                );
+              }
+              if (bal < 0) {
+                return (
+                  <>
+                    <div className="my-2 border-t border-dashed border-slate-400" />
+                    <div className="flex justify-between">
+                      <span>Store Credit Available</span>
+                      <span>{money(Math.abs(bal), cur)}</span>
+                    </div>
+                  </>
+                );
+              }
+              return null;
+            })()}
+
             <div className="my-2 border-t border-dashed border-slate-400" />
 
             {/* Footer */}

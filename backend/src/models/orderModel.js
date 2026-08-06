@@ -272,6 +272,7 @@ async function createOrder(payload) {
 async function getOrderById(id) {
   const [[order]] = await db.query(
     `SELECT o.*, c.full_name AS customer_name, c.phone AS customer_phone, c.email AS customer_email,
+            c.credit_balance AS customer_credit_balance,
             u.full_name AS cashier_name
      FROM orders o
      LEFT JOIN customers c ON c.id = o.customer_id

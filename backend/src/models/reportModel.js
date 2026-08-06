@@ -336,41 +336,227 @@ async function profitReport({ from, to }) {
 }
 
 async function dataHealthCheck() {
+  const results = {};
+
+  // 1. Credit balance vs ledger
   const [creditMismatches] = await db.query(`
     SELECT c.id, c.full_name, c.phone, c.credit_balance AS stored_balance,
            COALESCE(SUM(cl.credit_delta), 0) AS ledger_balance,
            c.credit_balance - COALESCE(SUM(cl.credit_delta), 0) AS drift
-    FROM customers c
-    LEFT JOIN customer_ledger cl ON cl.customer_id = c.id
+    FROM customers c LEFT JOIN customer_ledger cl ON cl.customer_id = c.id
     GROUP BY c.id
     HAVING ABS(c.credit_balance - COALESCE(SUM(cl.credit_delta), 0)) > 0.01
     ORDER BY ABS(drift) DESC
   `);
+  results.credit_balance = {
+    name: 'Credit Balance vs Ledger',
+    fixable: true,
+    rows: creditMismatches.map(r => ({ ...r, stored_balance: Number(r.stored_balance), ledger_balance: Number(r.ledger_balance), drift: Number(r.drift) })),
+  };
 
+  // 2. Loyalty points vs ledger
   const [pointsMismatches] = await db.query(`
     SELECT c.id, c.full_name, c.phone, c.loyalty_points_balance AS stored_points,
            COALESCE(SUM(cl.points_delta), 0) AS ledger_points,
            c.loyalty_points_balance - COALESCE(SUM(cl.points_delta), 0) AS drift
-    FROM customers c
-    LEFT JOIN customer_ledger cl ON cl.customer_id = c.id
+    FROM customers c LEFT JOIN customer_ledger cl ON cl.customer_id = c.id
     GROUP BY c.id
     HAVING ABS(c.loyalty_points_balance - COALESCE(SUM(cl.points_delta), 0)) > 0.5
     ORDER BY ABS(drift) DESC
   `);
-
-  const [orphanedPayments] = await db.query(`
-    SELECT op.id, op.order_id, op.payment_method, op.amount, op.created_at
-    FROM order_payments op
-    LEFT JOIN orders o ON o.id = op.order_id
-    WHERE o.id IS NULL
-    LIMIT 20
-  `);
-
-  return {
-    credit_mismatches: creditMismatches.map(r => ({ ...r, stored_balance: Number(r.stored_balance), ledger_balance: Number(r.ledger_balance), drift: Number(r.drift) })),
-    points_mismatches: pointsMismatches.map(r => ({ ...r, stored_points: Number(r.stored_points), ledger_points: Number(r.ledger_points), drift: Number(r.drift) })),
-    orphaned_payments: orphanedPayments.map(r => ({ ...r, amount: Number(r.amount) })),
+  results.points_balance = {
+    name: 'Loyalty Points vs Ledger',
+    fixable: true,
+    rows: pointsMismatches.map(r => ({ ...r, stored_points: Number(r.stored_points), ledger_points: Number(r.ledger_points), drift: Number(r.drift) })),
   };
+
+  // 3. Stock vs stock_movements
+  const [stockMismatches] = await db.query(`
+    SELECT pv.id, p.name AS product_name, pv.variant_label, pv.sku,
+           pv.current_stock AS stored_stock,
+           COALESCE(SUM(sm.change_qty), 0) AS movement_stock,
+           pv.current_stock - COALESCE(SUM(sm.change_qty), 0) AS drift
+    FROM product_variants pv
+    JOIN products p ON p.id = pv.product_id
+    LEFT JOIN stock_movements sm ON sm.variant_id = pv.id
+    GROUP BY pv.id
+    HAVING ABS(pv.current_stock - COALESCE(SUM(sm.change_qty), 0)) > 0
+    ORDER BY ABS(drift) DESC
+    LIMIT 50
+  `);
+  results.stock_balance = {
+    name: 'Stock vs Movements',
+    fixable: true,
+    rows: stockMismatches.map(r => ({ ...r, stored_stock: Number(r.stored_stock), movement_stock: Number(r.movement_stock), drift: Number(r.drift) })),
+  };
+
+  // 4. Payment total vs grand_total
+  const [paymentMismatches] = await db.query(`
+    SELECT o.id, o.order_number, o.grand_total, o.status,
+           COALESCE(SUM(op.amount), 0) AS paid_total,
+           o.grand_total - COALESCE(SUM(op.amount), 0) AS diff
+    FROM orders o
+    LEFT JOIN order_payments op ON op.order_id = o.id
+    WHERE o.status NOT IN ('cancelled', 'pending')
+    GROUP BY o.id
+    HAVING ABS(o.grand_total - COALESCE(SUM(op.amount), 0)) > 0.01
+    ORDER BY ABS(diff) DESC
+    LIMIT 50
+  `);
+  results.payment_mismatch = {
+    name: 'Payment Total vs Order Grand Total',
+    fixable: false,
+    rows: paymentMismatches.map(r => ({ ...r, grand_total: Number(r.grand_total), paid_total: Number(r.paid_total), diff: Number(r.diff) })),
+  };
+
+  // 5. Sales revenue vs Profit revenue consistency
+  const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const from = thirtyDaysAgo.toISOString().slice(0, 10);
+  const to = new Date().toISOString().slice(0, 10);
+  const SETTLED = "('completed','delivered','partially_refunded')";
+  const [[salesRev]] = await db.query(`
+    SELECT COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0)
+           - COALESCE(SUM((SELECT SUM(r.quantity * oi2.unit_price) FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id WHERE r.order_id = o.id)), 0) AS revenue
+    FROM orders o JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY) AND o.status IN ${SETTLED}
+  `, [from, to]);
+  const [[profitRev]] = await db.query(`
+    SELECT COALESCE(SUM(sub.revenue - sub.returned_revenue), 0) AS revenue FROM (
+      SELECT o.id,
+        COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0) AS revenue,
+        COALESCE((SELECT SUM(r.quantity * oi2.unit_price) FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id WHERE r.order_id = o.id), 0) AS returned_revenue
+      FROM orders o JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY) AND o.status IN ${SETTLED}
+      GROUP BY o.id
+    ) sub
+  `, [from, to]);
+  const revDrift = Math.abs(Number(salesRev?.revenue || 0) - Number(profitRev?.revenue || 0));
+  results.revenue_consistency = {
+    name: 'Sales vs Profit Revenue (last 30 days)',
+    fixable: false,
+    rows: revDrift > 0.01 ? [{ sales_revenue: Number(salesRev?.revenue || 0), profit_revenue: Number(profitRev?.revenue || 0), drift: revDrift }] : [],
+  };
+
+  // 6. Active variants where retail_price <= cost_price
+  const [underpriced] = await db.query(`
+    SELECT pv.id, p.name AS product_name, pv.variant_label, pv.sku,
+           pv.cost_price, pv.retail_price, pv.retail_price - pv.cost_price AS margin
+    FROM product_variants pv
+    JOIN products p ON p.id = pv.product_id
+    WHERE pv.is_active = 1 AND p.is_active = 1 AND pv.retail_price <= pv.cost_price AND pv.cost_price > 0
+    ORDER BY margin ASC
+  `);
+  results.underpriced = {
+    name: 'Active Variants: Retail ≤ Cost',
+    fixable: false,
+    rows: underpriced.map(r => ({ ...r, cost_price: Number(r.cost_price), retail_price: Number(r.retail_price), margin: Number(r.margin) })),
+  };
+
+  // 7. Refunded orders with no points reversal
+  const [noPointsReversal] = await db.query(`
+    SELECT o.id, o.order_number, o.status, o.created_at,
+           c.full_name, c.phone,
+           (SELECT SUM(cl.points_delta) FROM customer_ledger cl WHERE cl.reference_type = 'order' AND cl.reference_id = o.id AND cl.entry_type = 'points_earned') AS points_earned,
+           (SELECT SUM(cl.points_delta) FROM customer_ledger cl WHERE cl.reference_type = 'order' AND cl.reference_id = o.id AND cl.entry_type = 'points_redeemed') AS points_reversed
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id
+    WHERE o.status IN ('refunded', 'partially_refunded')
+    HAVING points_earned > 0 AND (points_reversed IS NULL OR points_reversed = 0)
+    ORDER BY o.created_at DESC
+    LIMIT 50
+  `);
+  results.points_reversal = {
+    name: 'Refunds Missing Points Reversal',
+    fixable: false,
+    rows: noPointsReversal.map(r => ({ ...r, points_earned: Number(r.points_earned || 0), points_reversed: Number(r.points_reversed || 0) })),
+  };
+
+  // 8. Order numbers not matching ORD-YYYY-NNNNNN
+  const [badOrderNumbers] = await db.query(`
+    SELECT id, order_number, status, created_at
+    FROM orders
+    WHERE order_number NOT REGEXP '^ORD-[0-9]{4}-[0-9]{6}$'
+    ORDER BY id DESC
+    LIMIT 50
+  `);
+  results.order_number_format = {
+    name: 'Order Number Format (ORD-YYYY-NNNNNN)',
+    fixable: false,
+    rows: badOrderNumbers,
+  };
+
+  // 9. Malformed data: negative stock, NULL cost snapshots, orphaned records
+  const [negativeStock] = await db.query(`
+    SELECT pv.id, p.name AS product_name, pv.variant_label, pv.sku, pv.current_stock
+    FROM product_variants pv JOIN products p ON p.id = pv.product_id
+    WHERE pv.current_stock < 0
+  `);
+  const [nullCostSnapshots] = await db.query(`
+    SELECT oi.id, o.order_number, oi.variant_id, oi.unit_price, oi.quantity
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE oi.cost_price_snapshot IS NULL AND o.status IN ('completed', 'partially_refunded')
+    LIMIT 50
+  `);
+  const [orphanedPayments] = await db.query(`
+    SELECT op.id, op.order_id, op.payment_method, op.amount
+    FROM order_payments op LEFT JOIN orders o ON o.id = op.order_id WHERE o.id IS NULL LIMIT 20
+  `);
+  const [orphanedItems] = await db.query(`
+    SELECT oi.id, oi.order_id, oi.variant_id, oi.quantity
+    FROM order_items oi LEFT JOIN orders o ON o.id = oi.order_id WHERE o.id IS NULL LIMIT 20
+  `);
+  results.malformed_data = {
+    name: 'Malformed Data (negative stock, NULL costs, orphans)',
+    fixable: false,
+    rows: [
+      ...negativeStock.map(r => ({ type: 'negative_stock', ...r, current_stock: Number(r.current_stock) })),
+      ...nullCostSnapshots.map(r => ({ type: 'null_cost_snapshot', ...r, unit_price: Number(r.unit_price) })),
+      ...orphanedPayments.map(r => ({ type: 'orphaned_payment', ...r, amount: Number(r.amount) })),
+      ...orphanedItems.map(r => ({ type: 'orphaned_item', ...r })),
+    ],
+  };
+
+  return results;
 }
 
-module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport, dataHealthCheck };
+async function fixCreditBalances() {
+  const [result] = await db.query(`
+    UPDATE customers c
+    SET c.credit_balance = (
+      SELECT COALESCE(SUM(cl.credit_delta), 0) FROM customer_ledger cl WHERE cl.customer_id = c.id
+    )
+    WHERE c.credit_balance != (
+      SELECT COALESCE(SUM(cl2.credit_delta), 0) FROM customer_ledger cl2 WHERE cl2.customer_id = c.id
+    )
+  `);
+  return { fixed: result.affectedRows };
+}
+
+async function fixPointsBalances() {
+  const [result] = await db.query(`
+    UPDATE customers c
+    SET c.loyalty_points_balance = (
+      SELECT COALESCE(SUM(cl.points_delta), 0) FROM customer_ledger cl WHERE cl.customer_id = c.id
+    )
+    WHERE c.loyalty_points_balance != (
+      SELECT COALESCE(SUM(cl2.points_delta), 0) FROM customer_ledger cl2 WHERE cl2.customer_id = c.id
+    )
+  `);
+  return { fixed: result.affectedRows };
+}
+
+async function fixStockBalances() {
+  const [result] = await db.query(`
+    UPDATE product_variants pv
+    SET pv.current_stock = (
+      SELECT COALESCE(SUM(sm.change_qty), 0) FROM stock_movements sm WHERE sm.variant_id = pv.id
+    )
+    WHERE pv.current_stock != (
+      SELECT COALESCE(SUM(sm2.change_qty), 0) FROM stock_movements sm2 WHERE sm2.variant_id = pv.id
+    )
+  `);
+  return { fixed: result.affectedRows };
+}
+
+module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport, dataHealthCheck, fixCreditBalances, fixPointsBalances, fixStockBalances };
