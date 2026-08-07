@@ -7,6 +7,7 @@ import PageWrapper from '../components/PageWrapper';
 import BarcodeScanner from '../components/BarcodeScanner';
 import EmptyState from '../components/EmptyState';
 import { TableSkeleton } from '../components/Skeleton';
+import { fuzzySearchProducts } from '../utils/fuzzySearch';
 
 function money(n) {
   return `Rs. ${Number(n || 0).toFixed(2)}`;
@@ -197,6 +198,8 @@ export default function Inventory() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const searchTimer = useRef(null);
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [viewMode, setViewMode] = useState('grid');
+  const [detailVariant, setDetailVariant] = useState(null);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -235,16 +238,17 @@ export default function Inventory() {
 
   const filteredGrouped = useMemo(() => {
     if (!debouncedSearch.trim()) return grouped;
-    const q = debouncedSearch.toLowerCase();
-    return grouped.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.variants.some(v =>
-        (v.variant_label || '').toLowerCase().includes(q) ||
-        (v.sku || '').toLowerCase().includes(q) ||
-        (v.barcode || '').toLowerCase().includes(q)
-      )
-    );
+    const allVariants = grouped.flatMap(p => p.variants.map(v => ({ ...v, name: p.name })));
+    const matched = fuzzySearchProducts(allVariants, debouncedSearch);
+    const matchedProductIds = new Set(matched.map(v => v.product_id));
+    return grouped.filter(p => matchedProductIds.has(p.id));
   }, [grouped, debouncedSearch]);
+
+  const flatVariants = useMemo(() => {
+    return filteredGrouped.flatMap(p =>
+      p.variants.map(v => ({ ...v, product_name: p.name, brand_name: p.brand_name, category_name: p.category_name, product_images: p.images, product_tags: p.tags, product_id: p.id }))
+    );
+  }, [filteredGrouped]);
 
   async function handleDeleteProduct(product) {
     try {
@@ -296,6 +300,16 @@ export default function Inventory() {
                 </button>
               )}
             </div>
+            <div className="flex rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+              <button onClick={() => setViewMode('grid')} title="Grid view"
+                className={`rounded-l-xl px-2.5 py-2.5 transition ${viewMode === 'grid' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              </button>
+              <button onClick={() => setViewMode('table')} title="Table view"
+                className={`rounded-r-xl px-2.5 py-2.5 transition ${viewMode === 'table' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/20 dark:text-brand-400' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+              </button>
+            </div>
             <button onClick={() => setScannerOpen(true)}
               className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
               <ScanIcon className="h-4 w-4" /> Scan
@@ -316,7 +330,7 @@ export default function Inventory() {
 
           {loading ? <TableSkeleton rows={8} /> : filteredGrouped.length === 0 ? (
             debouncedSearch ? (
-              <EmptyState icon="🔍" title="No results" description={`Nothing matches "${debouncedSearch}"`} action={
+              <EmptyState icon="🔍" title="No results" description={`Nothing matches "${debouncedSearch}" — try fewer characters`} action={
                 <button onClick={() => setInvSearch('')} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">Clear search</button>
               } />
             ) : (
@@ -324,6 +338,44 @@ export default function Inventory() {
                 <button onClick={() => setShowAddProduct(true)} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">+ Add product</button>
               } />
             )
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {flatVariants.map(v => {
+                const imgUrl = v.image_url || v.product_images?.[0]?.image_url;
+                const threshold = v.low_stock_threshold ?? 5;
+                const stockColor = v.current_stock <= 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  : v.current_stock <= threshold ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+                return (
+                  <motion.div key={v.variant_id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                    onClick={() => setDetailVariant(v)}
+                    className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                    <div className="aspect-square w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                      {imgUrl ? (
+                        <img src={imgUrl} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-slate-300 dark:text-slate-600">
+                          <svg className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      {v.brand_name && <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{v.brand_name}</p>}
+                      <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white leading-tight">{v.product_name}</p>
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        {v.variant_label} · <span className="font-mono">{v.sku}</span>
+                      </p>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">{money(v.retail_price)}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${stockColor}`}>
+                          {v.current_stock <= 0 ? 'Out of Stock' : `${v.current_stock} left`}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           ) : (
             <div className="space-y-4">
               {filteredGrouped.map((product) => (
@@ -391,6 +443,12 @@ export default function Inventory() {
         </div>
       </div>
 
+      {detailVariant && <VariantDetailModal v={detailVariant} onClose={() => setDetailVariant(null)}
+        onEdit={() => { setDetailVariant(null); setEditingVariant({ ...detailVariant, product_name: detailVariant.product_name }); }}
+        onAdjust={() => { setDetailVariant(null); setAdjustFor(detailVariant); }}
+        onHistory={() => { setDetailVariant(null); setHistoryFor(detailVariant); }}
+        onDelete={() => { setDetailVariant(null); setConfirmDelete({ type: 'variant', item: detailVariant }); }}
+      />}
       {adjustFor && <AdjustDrawer variant={adjustFor} onClose={() => setAdjustFor(null)} onDone={() => { setAdjustFor(null); loadAll(); toast.success('Stock adjusted'); }} onError={setError} />}
       {historyFor && <HistoryDrawer variant={historyFor} onClose={() => setHistoryFor(null)} />}
       {editingProduct && <EditProductDrawer product={editingProduct} categories={categories} brands={brands} initialImages={editingProduct.images || []} onClose={() => setEditingProduct(null)} onSaved={() => { setEditingProduct(null); loadAll(); toast.success('Product updated'); }} />}
@@ -942,6 +1000,155 @@ function HistoryDrawer({ variant, onClose }) {
         </div>
       )}
     </Drawer>
+  );
+}
+
+function VariantDetailModal({ v, onClose, onEdit, onAdjust, onHistory, onDelete }) {
+  const [movements, setMovements] = useState(null);
+  const [tiers, setTiers] = useState([]);
+  const [activeImg, setActiveImg] = useState(0);
+
+  useEffect(() => {
+    client.get(`/inventory/movements/${v.variant_id}`).then(r => setMovements(r.data.data?.slice(0, 10) || [])).catch(() => setMovements([]));
+    client.get(`/products/variants/${v.variant_id}/price-tiers`).then(r => setTiers(r.data.data || [])).catch(() => {});
+  }, [v.variant_id]);
+
+  const images = [];
+  if (v.image_url) images.push(v.image_url);
+  if (v.product_images) {
+    for (const img of v.product_images) {
+      if (img.image_url && !images.includes(img.image_url)) images.push(img.image_url);
+    }
+  }
+
+  const cost = Number(v.cost_price || 0);
+  const retail = Number(v.retail_price || 0);
+  const margin = retail > 0 ? ((retail - cost) / retail * 100).toFixed(1) : 0;
+  const threshold = v.low_stock_threshold ?? 5;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 dark:bg-black/70" onClick={onClose} />
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        className="relative mx-auto flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
+        <button onClick={onClose} className="absolute right-3 top-3 z-10 rounded-full bg-white/80 p-1.5 text-slate-400 backdrop-blur transition hover:bg-white hover:text-slate-600 dark:bg-slate-800/80 dark:hover:bg-slate-800">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="md:flex">
+            {/* Image gallery */}
+            <div className="md:w-1/2">
+              <div className="aspect-square w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                {images.length > 0 ? (
+                  <img src={images[activeImg] || images[0]} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-slate-300 dark:text-slate-600">
+                    <svg className="h-24 w-24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  </div>
+                )}
+              </div>
+              {images.length > 1 && (
+                <div className="flex gap-1.5 p-2">
+                  {images.map((url, i) => (
+                    <button key={i} onClick={() => setActiveImg(i)}
+                      className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition ${i === activeImg ? 'border-brand-500' : 'border-transparent opacity-60 hover:opacity-100'}`}>
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Details */}
+            <div className="flex-1 p-5">
+              {v.brand_name && <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{v.brand_name}</p>}
+              <h2 className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{v.product_name}</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{v.variant_label}</p>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Cost</p>
+                  <p className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300">{money(cost)}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Wholesale</p>
+                  <p className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300">{money(v.wholesale_price)}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Retail</p>
+                  <p className="font-mono text-sm font-semibold text-slate-900 dark:text-white">{money(retail)}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Margin</p>
+                  <p className={`font-mono text-sm font-semibold ${Number(margin) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>{margin}%</p>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Stock</p>
+                  <p className={`font-mono text-lg font-bold ${v.current_stock <= 0 ? 'text-red-500' : v.current_stock <= threshold ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{v.current_stock}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">SKU</p>
+                  <p className="font-mono text-sm text-slate-700 dark:text-slate-300">{v.sku}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Barcode</p>
+                  <p className="font-mono text-sm text-slate-700 dark:text-slate-300">{v.barcode || '—'}</p>
+                </div>
+              </div>
+
+              {v.mrp && (
+                <p className="mt-2 text-xs text-slate-400">MRP: {money(v.mrp)} · Threshold: {threshold} · Weight: {v.weight_grams || 0}g</p>
+              )}
+
+              {tiers.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Bulk Pricing</p>
+                  <div className="space-y-1">
+                    {tiers.map((t, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs dark:bg-slate-800/50">
+                        <span className="text-slate-600 dark:text-slate-400">{t.min_quantity}+ packs {t.label ? `(${t.label})` : ''}</span>
+                        <span className="font-mono font-semibold text-slate-900 dark:text-white">{money(t.tier_price)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {movements !== null && movements.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Recent Movements</p>
+                  <div className="space-y-1">
+                    {movements.map(m => (
+                      <div key={m.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs dark:bg-slate-800/50">
+                        <div>
+                          <span className={`font-mono font-medium ${m.change_qty >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                            {m.change_qty >= 0 ? '+' : ''}{m.change_qty}
+                          </span>
+                          <span className="ml-1.5 text-slate-500">{m.reason.replace(/_/g, ' ')}</span>
+                        </div>
+                        <span className="text-slate-400">{new Date(m.created_at).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 border-t border-slate-200 p-4 dark:border-slate-800">
+          <button onClick={onEdit} className="flex-1 rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition hover:bg-brand-700">Edit</button>
+          <button onClick={onAdjust} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Adjust Stock</button>
+          <button onClick={onHistory} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">History</button>
+          <button onClick={onDelete} className="rounded-xl border border-red-200 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">Delete</button>
+        </div>
+      </motion.div>
+    </div>
   );
 }
 

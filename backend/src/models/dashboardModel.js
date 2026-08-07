@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const fin = require('./financialEngine');
 
 async function getSummary() {
   // Revenue = item-level (qty * unit_price - discount_amount), settled statuses only, minus returned revenue
@@ -108,48 +109,20 @@ async function getSalesChart(days = 30) {
 }
 
 async function getBestSellers(limit = 10) {
-  const [rows] = await db.query(`
-    SELECT pv.id AS variant_id, pv.sku, pv.variant_label, pv.retail_price, pv.current_stock,
-           p.name AS product_name, pv.image_url,
-           SUM(oi.quantity) AS units_sold,
-           SUM(oi.line_total) AS revenue
-    FROM order_items oi
-    JOIN product_variants pv ON pv.id = oi.variant_id
-    JOIN products p ON p.id = pv.product_id
-    JOIN orders o ON o.id = oi.order_id
-    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      AND o.status NOT IN ('cancelled', 'refunded')
-    GROUP BY pv.id
-    ORDER BY units_sold DESC
-    LIMIT ?
-  `, [limit]);
-
-  return rows.map(r => ({ ...r, retail_price: Number(r.retail_price), revenue: Number(r.revenue) }));
+  return fin.bestSellersQuery('o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)', [], limit);
 }
 
 async function getStaffPerformance() {
-  const [rows] = await db.query(`
-    SELECT u.id, u.full_name, u.username, u.role,
-           COUNT(o.id) AS orders_count,
-           COALESCE(SUM(o.subtotal - o.discount_total), 0) AS total_sales
-    FROM users u
-    LEFT JOIN orders o ON o.cashier_id = u.id
-      AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      AND o.status NOT IN ('cancelled')
-    GROUP BY u.id
-    ORDER BY total_sales DESC
-  `);
-
-  return rows.map(r => ({ ...r, total_sales: Number(r.total_sales) }));
+  return fin.staffSalesQuery('o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)', []);
 }
 
 async function getCustomerInsights() {
   const [topCustomers] = await db.query(`
     SELECT c.id, c.full_name, c.phone, c.customer_type,
-           COUNT(o.id) AS orders_count,
-           COALESCE(SUM(o.grand_total), 0) AS total_spent
+           COUNT(DISTINCT o.id) AS orders_count,
+           COALESCE(SUM(${fin.NET_REVENUE_SUBQUERY}), 0) AS total_spent
     FROM customers c
-    LEFT JOIN orders o ON o.customer_id = c.id AND o.status NOT IN ('cancelled')
+    LEFT JOIN orders o ON o.customer_id = c.id AND o.status IN ${fin.SETTLED}
     GROUP BY c.id
     ORDER BY total_spent DESC
     LIMIT 10
@@ -193,7 +166,7 @@ async function getPaymentMethodBreakdown() {
     FROM order_payments op
     JOIN orders o ON o.id = op.order_id
     WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      AND o.status NOT IN ('cancelled')
+      AND o.status IN ${fin.SETTLED}
     GROUP BY op.payment_method
     ORDER BY total DESC
   `);

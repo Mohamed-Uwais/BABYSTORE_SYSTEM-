@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const fin = require('./financialEngine');
 
 async function getDailySummary(date) {
   const dateStr = date || new Date().toISOString().split('T')[0];
@@ -7,23 +8,21 @@ async function getDailySummary(date) {
   // Yesterday for comparison
   const yesterday = new Date(new Date(dateStr).getTime() - 86400000).toISOString().split('T')[0];
 
-  // 1. Sales overview
+  // 1. Sales overview — item-level revenue, settled statuses only
   const [[todayStats]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(subtotal - discount_total), 0)
-             - COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r JOIN orders o2 ON o2.id = r.order_id
-                WHERE o2.created_at >= ? AND o2.created_at < ?), 0) AS total_revenue,
-           COALESCE(SUM(delivery_fee), 0) AS delivery_collected,
-           COALESCE(AVG(subtotal - discount_total), 0) AS avg_order_value
-    FROM orders
-    WHERE created_at >= ? AND created_at < ? AND status NOT IN ('cancelled')
-  `, [dateStr, nextDate, dateStr, nextDate]);
+           COALESCE(SUM(${fin.NET_REVENUE_SUBQUERY}), 0) AS total_revenue,
+           COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected
+    FROM orders o
+    WHERE o.created_at >= ? AND o.created_at < ? AND o.status IN ${fin.SETTLED}
+  `, [dateStr, nextDate]);
+  todayStats.avg_order_value = todayStats.total_orders > 0 ? todayStats.total_revenue / todayStats.total_orders : 0;
 
   const [[yesterdayStats]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(subtotal - discount_total), 0) AS total_revenue
-    FROM orders
-    WHERE created_at >= ? AND created_at < ? AND status NOT IN ('cancelled')
+           COALESCE(SUM(${fin.NET_REVENUE_SUBQUERY}), 0) AS total_revenue
+    FROM orders o
+    WHERE o.created_at >= ? AND o.created_at < ? AND o.status IN ${fin.SETTLED}
   `, [yesterday, dateStr]);
 
   // 2. Payment breakdown
@@ -31,19 +30,20 @@ async function getDailySummary(date) {
     SELECT op.payment_method, COUNT(*) AS count, COALESCE(SUM(op.amount), 0) AS total
     FROM order_payments op
     JOIN orders o ON o.id = op.order_id
-    WHERE o.created_at >= ? AND o.created_at < ? AND o.status NOT IN ('cancelled')
+    WHERE o.created_at >= ? AND o.created_at < ? AND o.status IN ${fin.SETTLED}
     GROUP BY op.payment_method
   `, [dateStr, nextDate]);
 
   // 3. Top items sold
   const [itemsSold] = await db.query(`
     SELECT p.name AS product_name, pv.variant_label, pv.sku,
-           SUM(oi.quantity) AS qty_sold, SUM(oi.line_total) AS revenue
+           SUM(oi.quantity) AS qty_sold,
+           SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS revenue
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     JOIN product_variants pv ON pv.id = oi.variant_id
     JOIN products p ON p.id = pv.product_id
-    WHERE o.created_at >= ? AND o.created_at < ? AND o.status NOT IN ('cancelled')
+    WHERE o.created_at >= ? AND o.created_at < ? AND o.status IN ${fin.SETTLED}
     GROUP BY pv.id
     ORDER BY qty_sold DESC
     LIMIT 10
@@ -89,15 +89,9 @@ async function getDailySummary(date) {
   `);
 
   // 8. Staff activity
-  const [staffActivity] = await db.query(`
-    SELECT u.full_name, u.username, COUNT(o.id) AS orders_count,
-           COALESCE(SUM(o.subtotal - o.discount_total), 0) AS total_sales
-    FROM orders o
-    JOIN users u ON u.id = o.cashier_id
-    WHERE o.created_at >= ? AND o.created_at < ? AND o.status NOT IN ('cancelled')
-    GROUP BY u.id
-    ORDER BY orders_count DESC
-  `, [dateStr, nextDate]);
+  const staffActivity = await fin.staffSalesQuery(
+    'o.created_at >= ? AND o.created_at < ?', [dateStr, nextDate]
+  );
 
   const revenueChange = Number(yesterdayStats.total_revenue) > 0
     ? ((Number(todayStats.total_revenue) - Number(yesterdayStats.total_revenue)) / Number(yesterdayStats.total_revenue) * 100)

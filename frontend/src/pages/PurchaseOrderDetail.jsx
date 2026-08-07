@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageWrapper from '../components/PageWrapper';
+import { fuzzySearchProducts } from '../utils/fuzzySearch';
 
 const STATUS_STYLES = {
   placed: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
@@ -149,7 +150,7 @@ export default function PurchaseOrderDetail() {
   }
 
   const filteredVariants = variantSearch.length >= 2
-    ? allVariants.filter(v => v.label.toLowerCase().includes(variantSearch.toLowerCase()) || v.sku.toLowerCase().includes(variantSearch.toLowerCase())).slice(0, 8)
+    ? fuzzySearchProducts(allVariants.map(v => ({ ...v, name: v.label, variant_label: '' })), variantSearch).slice(0, 8)
     : [];
 
   const canEdit = po?.status === 'placed' || po?.status === 'paid';

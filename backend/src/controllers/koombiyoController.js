@@ -32,9 +32,10 @@ async function createWaybill(req, res) {
 
     res.json({ success: true, data: result });
   } catch (error) {
-    console.error('Koombiyo createWaybill error:', error.response?.data || error.message);
-    const msg = error.response?.data?.message || error.message || 'Koombiyo API error';
-    res.status(500).json({ success: false, message: `Koombiyo API error: ${msg}` });
+    console.error('Koombiyo createWaybill error:', error.message);
+    const msg = error.message || 'Koombiyo API error';
+    const status = msg.includes('unreachable') ? 503 : msg.includes('not configured') ? 501 : 502;
+    res.status(status).json({ success: false, message: msg });
   }
 }
 
@@ -60,8 +61,8 @@ async function cancelShipment(req, res) {
     }
     res.json({ success: true, data: result });
   } catch (error) {
-    console.error('Koombiyo cancel error:', error.response?.data || error.message);
-    res.status(500).json({ success: false, message: `Koombiyo API error: ${error.message}` });
+    console.error('Koombiyo cancel error:', error.message);
+    res.status(502).json({ success: false, message: error.message || 'Cancellation failed' });
   }
 }
 
@@ -78,6 +79,7 @@ async function getLabel(req, res) {
 
 async function webhook(req, res) {
   try {
+    console.log('Koombiyo webhook received:', JSON.stringify(req.body));
     const { waybill_no, status, delivered_date } = req.body;
     if (!waybill_no || !status) return res.json({ success: true });
 

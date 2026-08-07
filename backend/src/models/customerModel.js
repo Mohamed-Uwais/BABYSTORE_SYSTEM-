@@ -1,12 +1,13 @@
 const db = require('../config/db');
+const fin = require('./financialEngine');
 
 async function getAllCustomers() {
   const [rows] = await db.query(`
     SELECT c.*,
            COUNT(DISTINCT o.id) AS total_orders,
-           COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.grand_total ELSE 0 END), 0) AS total_spent
+           COALESCE(SUM(${fin.NET_REVENUE_SUBQUERY}), 0) AS total_spent
     FROM customers c
-    LEFT JOIN orders o ON o.customer_id = c.id
+    LEFT JOIN orders o ON o.customer_id = c.id AND o.status IN ${fin.SETTLED}
     GROUP BY c.id
     ORDER BY c.created_at DESC
   `);
@@ -19,8 +20,17 @@ async function getCustomerById(id) {
 
   const [[stats]] = await db.query(`
     SELECT COUNT(*) AS total_orders,
-           COALESCE(SUM(CASE WHEN status != 'cancelled' THEN grand_total ELSE 0 END), 0) AS total_spent
-    FROM orders WHERE customer_id = ?
+           COALESCE(SUM(sub.net_rev), 0) AS total_spent
+    FROM (
+      SELECT o.id,
+        (SELECT COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0)
+         FROM order_items oi WHERE oi.order_id = o.id)
+        - COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
+           FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id
+           WHERE r.order_id = o.id), 0) AS net_rev
+      FROM orders o
+      WHERE o.customer_id = ? AND o.status IN ${fin.SETTLED}
+    ) sub
   `, [id]);
 
   const [orders] = await db.query(`

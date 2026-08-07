@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const fin = require('./financialEngine');
 
 async function salesReport({ from, to }) {
   // All orders in range for the table (excluding cancelled)
@@ -18,7 +19,7 @@ async function salesReport({ from, to }) {
     LEFT JOIN customers c ON c.id = o.customer_id
     LEFT JOIN users u ON u.id = o.cashier_id
     WHERE o.created_at >= ? AND o.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      AND o.status NOT IN ('cancelled', 'refunded')
+      AND o.status NOT IN ('cancelled')
     ORDER BY o.created_at DESC
   `, [from, to]);
 
@@ -180,20 +181,20 @@ async function customerReport() {
 
   const [topBySpend] = await db.query(`
     SELECT c.id, c.full_name, c.phone, c.loyalty_tier,
-           COALESCE(SUM(o.grand_total), 0) AS total_spend,
-           COUNT(o.id) AS order_count
+           COALESCE(SUM(${fin.NET_REVENUE_SUBQUERY}), 0) AS total_spend,
+           COUNT(DISTINCT o.id) AS order_count
     FROM customers c
-    JOIN orders o ON o.customer_id = c.id AND o.status NOT IN ('cancelled', 'refunded')
+    JOIN orders o ON o.customer_id = c.id AND o.status IN ${fin.SETTLED}
     GROUP BY c.id
     ORDER BY total_spend DESC LIMIT 10
   `);
 
   const [topByFrequency] = await db.query(`
     SELECT c.id, c.full_name, c.phone, c.loyalty_tier,
-           COUNT(o.id) AS order_count,
-           COALESCE(SUM(o.grand_total), 0) AS total_spend
+           COUNT(DISTINCT o.id) AS order_count,
+           COALESCE(SUM(${fin.NET_REVENUE_SUBQUERY}), 0) AS total_spend
     FROM customers c
-    JOIN orders o ON o.customer_id = c.id AND o.status NOT IN ('cancelled', 'refunded')
+    JOIN orders o ON o.customer_id = c.id AND o.status IN ${fin.SETTLED}
     GROUP BY c.id
     ORDER BY order_count DESC LIMIT 10
   `);
@@ -203,7 +204,7 @@ async function customerReport() {
            MAX(o.created_at) AS last_order_date,
            DATEDIFF(NOW(), MAX(o.created_at)) AS days_since_last_order
     FROM customers c
-    JOIN orders o ON o.customer_id = c.id AND o.status NOT IN ('cancelled', 'refunded')
+    JOIN orders o ON o.customer_id = c.id AND o.status IN ${fin.SETTLED}
     GROUP BY c.id
     HAVING days_since_last_order > 30
     ORDER BY days_since_last_order DESC

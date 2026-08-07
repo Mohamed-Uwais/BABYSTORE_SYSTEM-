@@ -10,6 +10,7 @@ import Quotation from '../components/Quotation';
 import PageWrapper from '../components/PageWrapper';
 import EmptyState from '../components/EmptyState';
 import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
+import { fuzzySearchProducts } from '../utils/fuzzySearch';
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash', icon: 'banknote' },
@@ -184,16 +185,9 @@ export default function Billing() {
     if (tagFilter) {
       result = result.filter(p => p.tags?.some(t => t.name === tagFilter));
     }
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return result;
-    return result.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.variant_label?.toLowerCase().includes(q) ||
-        p.sku?.toLowerCase().includes(q) ||
-        p.barcode?.toLowerCase().includes(q) ||
-        p.tags?.some(t => t.name.toLowerCase().includes(q)),
-    );
+    return fuzzySearchProducts(result, q);
   }, [products, search, tagFilter]);
 
   const allTags = useMemo(() => {

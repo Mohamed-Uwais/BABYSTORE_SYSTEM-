@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import client from '../api/client';
 import PageWrapper, { staggerContainer, fadeUp } from '../components/PageWrapper';
 import { useToast } from '../context/ToastContext';
+import { fuzzySearchProducts } from '../utils/fuzzySearch';
 
 export default function StockToggle() {
   const [variants, setVariants] = useState([]);
@@ -23,12 +24,7 @@ export default function StockToggle() {
 
   const filtered = useMemo(() => {
     if (!search.trim()) return variants;
-    const q = search.toLowerCase();
-    return variants.filter(v =>
-      v.product_name.toLowerCase().includes(q) ||
-      v.sku.toLowerCase().includes(q) ||
-      (v.variant_label || '').toLowerCase().includes(q)
-    );
+    return fuzzySearchProducts(variants.map(v => ({ ...v, name: v.product_name })), search);
   }, [variants, search]);
 
   async function handleToggle(variant, newStock) {

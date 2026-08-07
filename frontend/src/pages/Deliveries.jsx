@@ -128,10 +128,13 @@ export default function Deliveries() {
   }
 
   async function koombiyoTrackOrder(waybillNo) {
+    setKoombiyoTrack({ waybill: waybillNo, data: null, loading: true, error: null });
     try {
       const r = await client.get(`/koombiyo/track/${waybillNo}`);
-      setKoombiyoTrack({ waybill: waybillNo, data: r.data.data });
-    } catch (err) { toast.error('Could not track shipment'); }
+      setKoombiyoTrack({ waybill: waybillNo, data: r.data.data, loading: false, error: null });
+    } catch (err) {
+      setKoombiyoTrack({ waybill: waybillNo, data: null, loading: false, error: err.response?.data?.message || 'Could not track shipment' });
+    }
   }
 
   async function refreshLiveTracking(orderId) {
@@ -475,14 +478,66 @@ export default function Deliveries() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setKoombiyoTrack(null)}>
             <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="mx-4 w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-900" onClick={e => e.stopPropagation()}>
-              <h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">
-                Koombiyo Tracking — {koombiyoTrack.waybill}
+              className="mx-4 w-full max-w-md rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-900" onClick={e => e.stopPropagation()}>
+              <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-white">
+                Tracking — {koombiyoTrack.waybill}
               </h3>
-              <pre className="max-h-64 overflow-y-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                {JSON.stringify(koombiyoTrack.data, null, 2)}
-              </pre>
-              <div className="mt-3 flex justify-end">
+
+              {koombiyoTrack.loading ? (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <svg className="h-8 w-8 animate-spin text-brand-500" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <p className="text-sm text-slate-500">Fetching tracking info...</p>
+                </div>
+              ) : koombiyoTrack.error ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                    {koombiyoTrack.error}
+                  </div>
+                  <a href={`https://koombiyodelivery.lk/Track/track_id?id=${encodeURIComponent(koombiyoTrack.waybill)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-brand-600 transition hover:bg-brand-50 dark:border-slate-700 dark:text-brand-400 dark:hover:bg-brand-900/20">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    Track on Koombiyo website
+                  </a>
+                </div>
+              ) : koombiyoTrack.data ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {koombiyoTrack.data.status && (
+                      <div className="col-span-2 rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Status</p>
+                        <p className="font-semibold text-slate-900 dark:text-white">{koombiyoTrack.data.status}</p>
+                      </div>
+                    )}
+                    {koombiyoTrack.data.receiver_name && (
+                      <div><p className="text-xs text-slate-500 dark:text-slate-400">Receiver</p><p className="text-slate-900 dark:text-white">{koombiyoTrack.data.receiver_name}</p></div>
+                    )}
+                    {koombiyoTrack.data.receiver_city && (
+                      <div><p className="text-xs text-slate-500 dark:text-slate-400">City</p><p className="text-slate-900 dark:text-white">{koombiyoTrack.data.receiver_city}</p></div>
+                    )}
+                    {koombiyoTrack.data.cod_amount != null && (
+                      <div><p className="text-xs text-slate-500 dark:text-slate-400">COD Amount</p><p className="text-slate-900 dark:text-white">Rs. {Number(koombiyoTrack.data.cod_amount).toFixed(2)}</p></div>
+                    )}
+                    {koombiyoTrack.data.delivered_date && (
+                      <div><p className="text-xs text-slate-500 dark:text-slate-400">Delivered</p><p className="text-slate-900 dark:text-white">{koombiyoTrack.data.delivered_date}</p></div>
+                    )}
+                  </div>
+                  {koombiyoTrack.data.cached && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500">Cached result — refreshes every 5 minutes</p>
+                  )}
+                  <a href={`https://koombiyodelivery.lk/Track/track_id?id=${encodeURIComponent(koombiyoTrack.waybill)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-brand-600 transition hover:bg-brand-50 dark:border-slate-700 dark:text-brand-400 dark:hover:bg-brand-900/20">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    View on Koombiyo website
+                  </a>
+                </div>
+              ) : null}
+
+              <div className="mt-4 flex justify-end">
                 <button onClick={() => setKoombiyoTrack(null)}
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-500 dark:border-slate-700">Close</button>
               </div>
