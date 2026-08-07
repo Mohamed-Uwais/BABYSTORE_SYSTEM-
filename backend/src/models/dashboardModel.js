@@ -2,21 +2,14 @@ const db = require('../config/db');
 const fin = require('./financialEngine');
 
 async function getSummary() {
-  // Revenue = item-level (qty * unit_price - discount_amount), settled statuses only, minus returned revenue
-  const revenueSubquery = `(
-    SELECT COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0)
-           - COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
-              FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id
-              WHERE r.order_id = o.id), 0)
-    FROM order_items oi WHERE oi.order_id = o.id
-  )`;
+  const revenueSubquery = fin.NET_REVENUE_SUBQUERY;
 
   const [[todayStats]] = await db.query(`
     SELECT COUNT(*) AS orders_today,
            COALESCE(SUM(${revenueSubquery}), 0) AS revenue_today,
            COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected_today
     FROM orders o
-    WHERE DATE(o.created_at) = CURDATE() AND o.status IN ('completed','delivered','partially_refunded')
+    WHERE DATE(o.created_at) = CURDATE() AND o.status IN ${fin.SETTLED}
   `);
 
   const [[weekStats]] = await db.query(`
@@ -24,7 +17,7 @@ async function getSummary() {
            COALESCE(SUM(${revenueSubquery}), 0) AS revenue_week,
            COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected_week
     FROM orders o
-    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND o.status IN ('completed','delivered','partially_refunded')
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND o.status IN ${fin.SETTLED}
   `);
 
   const [[monthStats]] = await db.query(`
@@ -32,7 +25,7 @@ async function getSummary() {
            COALESCE(SUM(${revenueSubquery}), 0) AS revenue_month,
            COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected_month
     FROM orders o
-    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status IN ('completed','delivered','partially_refunded')
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status IN ${fin.SETTLED}
   `);
 
   const [[prevMonthStats]] = await db.query(`
@@ -40,7 +33,7 @@ async function getSummary() {
     FROM orders o
     WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
       AND o.created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      AND o.status IN ('completed','delivered','partially_refunded')
+      AND o.status IN ${fin.SETTLED}
   `);
 
   const [[customerCount]] = await db.query('SELECT COUNT(*) AS total FROM customers');
@@ -93,14 +86,11 @@ async function getSalesChart(days = 30) {
   const [rows] = await db.query(`
     SELECT DATE(o.created_at) AS date,
            COUNT(*) AS orders,
-           COALESCE(SUM(
-             (SELECT COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0) FROM order_items oi WHERE oi.order_id = o.id)
-             - COALESCE((SELECT SUM(r.quantity * oi2.unit_price) FROM order_returns r JOIN order_items oi2 ON oi2.id = r.order_item_id WHERE r.order_id = o.id), 0)
-           ), 0) AS revenue,
+           COALESCE(SUM(${fin.NET_REVENUE_SUBQUERY}), 0) AS revenue,
            COALESCE(SUM(o.delivery_fee), 0) AS delivery_collected
     FROM orders o
     WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-      AND o.status IN ('completed','delivered','partially_refunded')
+      AND o.status IN ${fin.SETTLED}
     GROUP BY DATE(o.created_at)
     ORDER BY date
   `, [days]);
