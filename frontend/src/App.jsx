@@ -18,6 +18,7 @@ import Conversations from './pages/Conversations';
 import Quotations from './pages/Quotations';
 import WebsiteContent from './pages/WebsiteContent';
 import DataHealth from './pages/DataHealth';
+import Expenses from './pages/Expenses';
 import ProtectedRoute from './components/ProtectedRoute';
 import PermissionRoute from './components/PermissionRoute';
 import Sidebar from './components/Sidebar';
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/promotions" element={<PermissionRoute permission="inventory"><Promotions /></PermissionRoute>} />
           <Route path="/quotations" element={<PermissionRoute permission="billing"><Quotations /></PermissionRoute>} />
           <Route path="/conversations" element={<PermissionRoute permission="reports"><Conversations /></PermissionRoute>} />
+          <Route path="/expenses" element={<PermissionRoute permission="reports"><Expenses /></PermissionRoute>} />
           <Route path="*" element={<DefaultRedirect />} />
         </Routes>
       </AnimatePresence>

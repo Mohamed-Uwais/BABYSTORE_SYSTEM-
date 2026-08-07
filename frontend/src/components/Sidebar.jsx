@@ -22,6 +22,7 @@ const ZONE_2 = [
   { to: '/reports', label: 'Reports', perm: 'reports', icon: 'bar-chart' },
   { to: '/daily-summary', label: 'Daily Summary', perm: 'reports', icon: 'calendar' },
   { to: '/conversations', label: 'Conversations', perm: 'reports', icon: 'chat' },
+  { to: '/expenses', label: 'Expenses', perm: 'reports', icon: 'wallet' },
 ];
 
 const ZONE_3 = [
@@ -52,6 +53,7 @@ function NavIcon({ type, className }) {
     case 'collapse': return <svg {...props}><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>;
     case 'quote': return <svg {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
     case 'expand': return <svg {...props}><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>;
+    case 'wallet': return <svg {...props}><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/><rect x="15" y="12" width="4" height="4" rx="1"/></svg>;
     case 'health': return <svg {...props}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
     default: return null;
   }

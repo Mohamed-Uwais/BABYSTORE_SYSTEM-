@@ -51,6 +51,17 @@ async function profitReport(req, res) {
     const from = dateOrDefault(req.query.from, 30);
     const to = dateOrDefault(req.query.to, 0);
     const data = await reportModel.profitReport({ from, to });
+    const expenseModel = require('../models/expenseModel');
+    const [expenseTotal, expenseBreakdown] = await Promise.all([
+      expenseModel.getExpensesForDateRange(from, to),
+      expenseModel.getExpenseBreakdownForDateRange(from, to),
+    ]);
+    data.expenses = { total: expenseTotal, breakdown: expenseBreakdown };
+    data.summary.total_expenses = expenseTotal;
+    data.summary.net_profit = data.summary.gross_profit - expenseTotal;
+    data.summary.net_margin = data.summary.total_revenue > 0
+      ? Math.round(data.summary.net_profit / data.summary.total_revenue * 10000) / 100
+      : 0;
     res.json({ success: true, data });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 }

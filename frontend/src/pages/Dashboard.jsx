@@ -142,6 +142,47 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Profitability Card */}
+        {summary?.profitability && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+            className="mb-6 rounded-xl bg-white shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-800">
+            <div className="p-5">
+              <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">This Month — Profitability</h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Revenue</p>
+                  <p className="text-lg font-bold text-slate-900 dark:text-white">Rs. {Number(summary.profitability.revenue).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Gross Profit</p>
+                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                    Rs. {Number(summary.profitability.gross_profit).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    <span className="ml-1 text-xs font-normal text-slate-400">({summary.profitability.gross_margin}%)</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Expenses</p>
+                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                    Rs. {Number(summary.profitability.expenses).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Net Profit</p>
+                  <p className={`text-lg font-bold ${summary.profitability.net_profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                    Rs. {Number(summary.profitability.net_profit).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    <span className="ml-1 text-xs font-normal opacity-60">({summary.profitability.net_margin}%)</span>
+                  </p>
+                </div>
+              </div>
+              {summary.profitability.break_even_daily && (
+                <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:border-blue-800/50 dark:bg-blue-900/20 dark:text-blue-300">
+                  You need <span className="font-semibold">Rs. {Number(summary.profitability.break_even_daily).toLocaleString('en-LK')}</span> in daily sales to break even on fixed expenses
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
         {/* Revenue Chart + Payment Methods */}
         <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="col-span-1 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-900 dark:ring-slate-800 lg:col-span-2">

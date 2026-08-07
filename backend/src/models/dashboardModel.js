@@ -64,10 +64,69 @@ async function getSummary() {
     FROM customers c WHERE c.phone IN ('KOOMBIYO', 'FARDAR') AND c.credit_balance > 0
   `);
 
+  // Monthly COGS for gross profit
+  const [[monthCogs]] = await db.query(`
+    SELECT COALESCE(SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, 0)), 0) AS cogs
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status IN ${fin.SETTLED}
+  `);
+
+  // Monthly expenses
+  const [[monthExpenses]] = await db.query(`
+    SELECT COALESCE(SUM(amount), 0) AS total
+    FROM expenses
+    WHERE expense_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+  `);
+
+  // Break-even: avg daily gross margin over last 30 days
+  const [[avgDaily]] = await db.query(`
+    SELECT COUNT(DISTINCT DATE(o.created_at)) AS active_days,
+           COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0)
+           - COALESCE(SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, 0)), 0) AS gross_profit_30d
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status IN ${fin.SETTLED}
+  `);
+
+  // Monthly fixed expenses (recurring categories)
+  const [[fixedExpenses]] = await db.query(`
+    SELECT COALESCE(SUM(e.amount), 0) AS total
+    FROM expenses e
+    JOIN expense_categories ec ON ec.id = e.category_id
+    WHERE ec.is_recurring = TRUE
+      AND e.expense_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+  `);
+
+  const monthRevenue = Number(monthStats.revenue_month);
+  const monthCogsVal = Number(monthCogs.cogs);
+  const grossProfit = monthRevenue - monthCogsVal;
+  const expensesTotal = Number(monthExpenses.total);
+  const netProfit = grossProfit - expensesTotal;
+
+  const activeDays = Number(avgDaily.active_days) || 1;
+  const avgDailyGrossProfit = Number(avgDaily.gross_profit_30d) / activeDays;
+  const monthlyFixed = Number(fixedExpenses.total);
+  const breakEvenDailySales = avgDailyGrossProfit > 0
+    ? Math.ceil(monthlyFixed / (avgDailyGrossProfit / monthRevenue * activeDays) * activeDays / activeDays)
+    : null;
+  const grossMarginPct = monthRevenue > 0 ? avgDailyGrossProfit / (monthRevenue / activeDays) : 0;
+  const breakEvenDaily = grossMarginPct > 0 ? Math.ceil((monthlyFixed / 30) / grossMarginPct) : null;
+
   return {
     today: { orders: todayStats.orders_today, revenue: Number(todayStats.revenue_today), delivery_collected: Number(todayStats.delivery_collected_today) },
     week: { orders: weekStats.orders_week, revenue: Number(weekStats.revenue_week), delivery_collected: Number(weekStats.delivery_collected_week) },
     month: { orders: monthStats.orders_month, revenue: Number(monthStats.revenue_month), delivery_collected: Number(monthStats.delivery_collected_month), revenue_growth: revenueGrowth ? Number(revenueGrowth) : null },
+    profitability: {
+      revenue: monthRevenue,
+      cogs: monthCogsVal,
+      gross_profit: grossProfit,
+      gross_margin: monthRevenue > 0 ? Math.round(grossProfit / monthRevenue * 10000) / 100 : 0,
+      expenses: expensesTotal,
+      net_profit: netProfit,
+      net_margin: monthRevenue > 0 ? Math.round(netProfit / monthRevenue * 10000) / 100 : 0,
+      break_even_daily: breakEvenDaily,
+    },
     customers: customerCount.total,
     active_products: productCount.total,
     low_stock_count: lowStockCount.total,

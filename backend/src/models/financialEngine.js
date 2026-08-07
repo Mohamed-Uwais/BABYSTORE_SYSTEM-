@@ -53,7 +53,7 @@ async function customerTotalSpent(customerIdOrCondition, params = []) {
 async function staffSalesQuery(dateCondition, params) {
   const [rows] = await db.query(`
     SELECT u.id, u.full_name, u.username, u.role,
-           COUNT(DISTINCT o.id) AS orders_count,
+           COUNT(DISTINCT sub.id) AS orders_count,
            COALESCE(SUM(sub.revenue), 0) AS total_sales
     FROM users u
     LEFT JOIN (

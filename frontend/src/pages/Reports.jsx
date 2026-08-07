@@ -143,7 +143,7 @@ function ProfitReport() {
   if (loading) return <ReportSkeleton />;
   if (!data) return null;
 
-  const { summary, dailyTrend, byProduct } = data;
+  const { summary, dailyTrend, byProduct, expenses } = data;
   const trend = dailyTrend.map(d => ({
     date: d.date?.slice?.(0, 10) || d.date,
     revenue: Number(d.revenue),
@@ -154,12 +154,54 @@ function ProfitReport() {
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
       <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} onExport={() => exportCSV(byProduct, `profit-${from}-${to}`)} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <StatCard label="Product Revenue" value={money(summary.total_revenue)} color="brand" />
-        <StatCard label="Cost of Goods" value={money(summary.total_cogs)} color="amber" />
-        <StatCard label="Gross Profit" value={money(summary.gross_profit)} color="emerald" />
-        <StatCard label="Margin" value={`${summary.margin}%`} color="violet" />
-      </div>
+
+      {/* Net Profit income statement */}
+      <motion.div variants={fadeUp} className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="p-4 sm:p-5">
+          <div className="space-y-1 font-mono text-sm">
+            <div className="flex justify-between text-slate-600 dark:text-slate-300">
+              <span>Revenue</span><span>{money(summary.total_revenue)}</span>
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-300">
+              <span>Cost of Goods Sold</span><span>{money(summary.total_cogs)}</span>
+            </div>
+            <div className="my-2 border-t border-slate-200 dark:border-slate-700" />
+            <div className="flex justify-between font-semibold text-slate-900 dark:text-white">
+              <span>GROSS PROFIT</span>
+              <span className="flex items-center gap-2">
+                {money(summary.gross_profit)}
+                <span className="text-xs font-normal text-slate-400">({summary.margin}%)</span>
+              </span>
+            </div>
+
+            {expenses && (
+              <>
+                <div className="pt-3 pb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">Operating Expenses</div>
+                {expenses.breakdown.length > 0 ? expenses.breakdown.map((e, i) => (
+                  <div key={i} className="flex justify-between pl-4 text-slate-500 dark:text-slate-400">
+                    <span>{e.category}</span><span>{money(e.total)}</span>
+                  </div>
+                )) : (
+                  <div className="pl-4 text-slate-400 italic">No expenses recorded</div>
+                )}
+                <div className="my-2 border-t border-slate-200 dark:border-slate-700" />
+                <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                  <span className="pl-4">Total Expenses</span><span>{money(summary.total_expenses)}</span>
+                </div>
+                <div className="my-2 border-t border-slate-200 dark:border-slate-700" />
+                <div className={`flex justify-between text-base font-bold ${summary.net_profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                  <span>NET PROFIT</span>
+                  <span className="flex items-center gap-2">
+                    {money(summary.net_profit)}
+                    <span className="text-xs font-normal opacity-70">({summary.net_margin}%)</span>
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard label="Delivery — Own" value={money(summary.delivery_own || 0)} sub="Our income (separate)" color="cyan" />
         <StatCard label="Delivery — Courier" value={money(summary.delivery_courier || 0)} sub="Not our money" color="amber" />

@@ -25,6 +25,7 @@ const chatbotRoutes = require('./routes/chatbotRoutes');
 const koombiyoRoutes = require('./routes/koombiyoRoutes');
 const quotationRoutes = require('./routes/quotationRoutes');
 const settlementRoutes = require('./routes/settlementRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
 const koombiyoController = require('./controllers/koombiyoController');
 const courierController = require('./controllers/courierController');
 const userController = require('./controllers/userController');
@@ -61,6 +62,7 @@ app.use('/api/promotions', protect, requirePermission('inventory', 'billing'), p
 app.use('/api/koombiyo', protect, requirePermission('deliveries'), koombiyoRoutes);
 app.use('/api/quotations', protect, requirePermission('billing'), quotationRoutes);
 app.use('/api/settlements', protect, requirePermission('reports'), settlementRoutes);
+app.use('/api/expenses', protect, requirePermission('reports'), expenseRoutes);
 app.use('/api/chatbot', protect, requirePermission('reports'), chatbotRoutes);
 
 app.get('/api/couriers', protect, requirePermission('deliveries', 'billing'), courierController.getCouriers);
