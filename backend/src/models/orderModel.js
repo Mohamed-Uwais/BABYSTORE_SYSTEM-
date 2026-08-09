@@ -4,11 +4,12 @@ const customerModel = require('./customerModel');
 // Generates order numbers like ORD-2026-000123
 async function generateOrderNumber(connection) {
   const year = new Date().getFullYear();
-  const [[{ count }]] = await connection.query(
-    `SELECT COUNT(*) AS count FROM orders WHERE order_number LIKE ?`,
-    [`ORD-${year}-%`]
-  );
-  const next = String(count + 1).padStart(6, '0');
+const [[row]] = await connection.query(
+  `SELECT COALESCE(MAX(CAST(SUBSTRING(order_number, 10) AS UNSIGNED)), 0) AS maxNum
+   FROM orders WHERE order_number LIKE ? AND LENGTH(order_number) = 15`,
+  [`ORD-${year}-%`]
+);
+const next = String(Number(row.maxNum) + 1).padStart(6, '0');
   return `ORD-${year}-${next}`;
 }
 
