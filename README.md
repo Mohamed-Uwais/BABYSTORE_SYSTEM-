@@ -155,8 +155,8 @@ npm run dev
 
 | Role | Username | Password |
 |------|----------|----------|
-| Owner | `owner` | `admin 123` |
-| Cashier | `cashier1` | `cashier123` |
+| Owner | `owner` | `` |
+| Cashier | `cashier1` | `` |
 
 ## Three-System Vision
 
