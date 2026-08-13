@@ -4,12 +4,50 @@ const notifier = require('../utils/orderNotifier');
 
 async function checkout(req, res) {
   try {
+    // Log incoming request for debugging
+    console.log('[CHECKOUT] Received payload:', JSON.stringify(req.body, null, 2));
+    
+    // Validate required fields before processing
+    const { channel, items, payments, customer_id, cashier_id } = req.body;
+    
+    if (!channel) {
+      return res.status(400).json({ success: false, message: 'Missing required field: channel' });
+    }
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ success: false, message: 'Missing required field: items (must be array)' });
+    }
+    if (items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Order must contain at least one item' });
+    }
+    if (!payments || !Array.isArray(payments)) {
+      return res.status(400).json({ success: false, message: 'Missing required field: payments (must be array)' });
+    }
+    if (payments.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one payment method is required' });
+    }
+    
+    // Validate items structure
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.variant_id) return res.status(400).json({ success: false, message: `Item ${i}: missing variant_id` });
+      if (!item.quantity || item.quantity <= 0) return res.status(400).json({ success: false, message: `Item ${i}: invalid quantity` });
+      if (!item.unit_price || item.unit_price < 0) return res.status(400).json({ success: false, message: `Item ${i}: invalid unit_price` });
+    }
+    
+    // Validate payments structure
+    for (let i = 0; i < payments.length; i++) {
+      const payment = payments[i];
+      if (!payment.payment_method) return res.status(400).json({ success: false, message: `Payment ${i}: missing payment_method` });
+      if (!payment.amount || payment.amount <= 0) return res.status(400).json({ success: false, message: `Payment ${i}: invalid amount` });
+    }
+    
     const result = await orderModel.createOrder(req.body);
+    console.log('[CHECKOUT] Order created successfully:', result.orderId);
     res.status(201).json({ success: true, message: 'Order completed', data: result });
   } catch (error) {
-    console.error(error);
+    console.error('[CHECKOUT] Error:', error.message, error.stack);
     // Business-rule errors (stock, credit eligibility, payment mismatch) are safe to show the cashier directly
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({ success: false, message: error.message, error: process.env.NODE_ENV === 'development' ? error.stack : undefined });
   }
 }
 

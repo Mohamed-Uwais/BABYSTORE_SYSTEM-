@@ -4,6 +4,7 @@ const userModel = require('../models/userModel');
 async function protect(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[AUTH] Missing/invalid authorization header for', req.method, req.path);
     return res.status(401).json({ success: false, message: 'No token provided' });
   }
 
@@ -12,8 +13,10 @@ async function protect(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const permissions = await userModel.getPermissions(decoded.id, decoded.role);
     req.user = { ...decoded, permissions };
+    console.log('[AUTH] Token verified for user:', decoded.username, 'accessing', req.path);
     next();
   } catch (error) {
+    console.log('[AUTH] Invalid/expired token:', error.message);
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 }
