@@ -4,7 +4,6 @@ const notifier = require('../utils/orderNotifier');
 
 async function checkout(req, res) {
   try {
-    // Log incoming request for debugging
     console.log('[CHECKOUT] Received payload:', JSON.stringify(req.body, null, 2));
     
     // Validate required fields before processing
@@ -30,18 +29,45 @@ async function checkout(req, res) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (!item.variant_id) return res.status(400).json({ success: false, message: `Item ${i}: missing variant_id` });
-      if (!item.quantity || item.quantity <= 0) return res.status(400).json({ success: false, message: `Item ${i}: invalid quantity` });
-      if (!item.unit_price || item.unit_price < 0) return res.status(400).json({ success: false, message: `Item ${i}: invalid unit_price` });
+      const qty = Number(item.quantity);
+      if (!qty || qty <= 0 || !Number.isFinite(qty)) {
+        return res.status(400).json({ success: false, message: `Item ${i}: quantity must be a positive number (got: ${item.quantity})` });
+      }
+      const price = Number(item.unit_price);
+      if (price === undefined || price === null || !Number.isFinite(price) || price < 0) {
+        return res.status(400).json({ success: false, message: `Item ${i}: unit_price must be a valid number >= 0 (got: ${item.unit_price})` });
+      }
     }
     
     // Validate payments structure
     for (let i = 0; i < payments.length; i++) {
       const payment = payments[i];
       if (!payment.payment_method) return res.status(400).json({ success: false, message: `Payment ${i}: missing payment_method` });
-      if (!payment.amount || payment.amount <= 0) return res.status(400).json({ success: false, message: `Payment ${i}: invalid amount` });
+      const amount = Number(payment.amount);
+      if (amount === undefined || amount === null || !Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ success: false, message: `Payment ${i}: amount must be a positive number (got: ${payment.amount})` });
+      }
     }
     
-    const result = await orderModel.createOrder(req.body);
+    // Clean payload - remove fields the model doesn't expect
+    const cleanPayload = {
+      channel,
+      customer_id: customer_id || null,
+      cashier_id: cashier_id || null,
+      items,
+      payments,
+      fulfillment_type: req.body.fulfillment_type || 'pickup',
+      delivery_address: req.body.delivery_address || null,
+      delivery_zone_id: req.body.delivery_zone_id || null,
+      delivery: req.body.delivery || null,
+      discount_total: Number(req.body.discount_total) || 0,
+      delivery_fee: Number(req.body.delivery_fee) || 0,
+      notes: req.body.notes || null
+    };
+    
+    console.log('[CHECKOUT] Cleaned payload for model:', JSON.stringify(cleanPayload, null, 2));
+    
+    const result = await orderModel.createOrder(cleanPayload);
     console.log('[CHECKOUT] Order created successfully:', result.orderId);
     res.status(201).json({ success: true, message: 'Order completed', data: result });
   } catch (error) {

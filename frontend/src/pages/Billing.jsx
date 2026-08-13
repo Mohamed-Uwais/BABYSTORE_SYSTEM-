@@ -669,36 +669,71 @@ export default function Billing() {
 
   async function completeSale() {
     setError('');
-    const paymentsTotal = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+    
+    // Validate cart
+    if (!cart || cart.length === 0) {
+      toast.error('Cart is empty. Add items to proceed.');
+      return;
+    }
+    
+    // Validate payments
+    if (!payments || payments.length === 0) {
+      toast.error('No payment methods added. Add a payment to proceed.');
+      return;
+    }
+    
+    // Validate each payment has valid amount
+    const validPayments = payments.filter(p => p.method && p.amount);
+    if (validPayments.length === 0) {
+      toast.error('All payment methods must have an amount. Please add payment details.');
+      return;
+    }
+    
+    // Ensure amounts are valid numbers
+    const paymentsWithValidAmounts = validPayments.map(p => ({
+      ...p,
+      amount: parseFloat(p.amount)
+    })).filter(p => Number.isFinite(p.amount) && p.amount > 0);
+    
+    if (paymentsWithValidAmounts.length === 0) {
+      toast.error('All payment amounts must be valid numbers greater than 0.');
+      return;
+    }
+    
+    const paymentsTotal = paymentsWithValidAmounts.reduce((sum, p) => sum + p.amount, 0);
     if (Math.abs(paymentsTotal - grandTotal) > 0.5) {
       toast.error(`Payment total (Rs. ${paymentsTotal.toFixed(2)}) doesn't match order total (Rs. ${grandTotal.toFixed(2)})`);
       return;
     }
+    
     setSubmitting(true);
     try {
       const effectiveFulfillment = getEffectiveFulfillmentType();
       const courier = getSelectedCourier();
 
+      // Validate items structure
+      const validItems = cart.filter(l => l.variant_id && l.quantity && l.unit_price !== undefined);
+      if (validItems.length !== cart.length) {
+        throw new Error('Some items have missing or invalid data');
+      }
+
       const payload = {
         channel: 'pos',
         customer_id: customer?.id || null,
         cashier_id: user?.id || null,
-        items: cart.map((l) => ({
+        items: validItems.map((l) => ({
           variant_id: l.variant_id,
-          quantity: l.quantity,
-          unit_price: l.unit_price,
+          quantity: Number(l.quantity),
+          unit_price: Number(l.unit_price),
           discount_amount: 0,
         })),
-        discount_total: promoDiscount + manualDiscount,
-        applied_promotions: appliedPromos,
-        coupon_code: couponApplied || null,
-        payments: payments.map((p) => ({
+        discount_total: Number(promoDiscount + manualDiscount) || 0,
+        payments: paymentsWithValidAmounts.map((p) => ({
           payment_method: p.method,
-          amount: parseFloat(p.amount),
+          amount: p.amount,
         })),
         fulfillment_type: effectiveFulfillment,
-        pricing_mode: wholesaleMode ? 'wholesale' : 'retail',
-        delivery_fee: effectiveDeliveryFee,
+        delivery_fee: Number(effectiveDeliveryFee) || 0,
         delivery_zone_id: selectedZone || null,
         delivery_address: receiverAddress || null,
         notes: deliveryNotes || null,
@@ -714,6 +749,7 @@ export default function Billing() {
         };
       }
 
+      console.log('[CHECKOUT] Sending payload:', JSON.stringify(payload, null, 2));
       const res = await client.post('/orders/checkout', payload);
       const orderData = res.data.data;
       if (fromQuotation) {

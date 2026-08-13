@@ -38,12 +38,34 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Custom JSON parsing error handler
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('[JSON_PARSE_ERROR]', err.message, 'Body:', req.body);
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Invalid JSON in request body',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+  next(err);
+});
+
 // Request logging middleware for debugging
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
-    hasAuth: !!req.headers.authorization,
-    contentType: req.headers['content-type']
-  });
+  if (req.method === 'POST' && req.path.includes('/checkout')) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
+      hasAuth: !!req.headers.authorization,
+      contentType: req.headers['content-type'],
+      bodySize: JSON.stringify(req.body).length,
+      bodyKeys: Object.keys(req.body)
+    });
+  } else {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
+      hasAuth: !!req.headers.authorization,
+      contentType: req.headers['content-type']
+    });
+  }
   next();
 });
 
