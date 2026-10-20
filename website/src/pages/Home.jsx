@@ -1,3 +1,4 @@
+import HeroImage from '../components/HeroImage';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useInView, AnimatePresence } from 'framer-motion';
@@ -103,7 +104,7 @@ function HeroSlider({ whatsapp }) {
   return (
     <section className="relative h-[100dvh] min-h-[600px] w-full overflow-hidden -mt-[108px]">
       {/* Background slides with Ken Burns */}
-      <AnimatePresence mode="sync">
+      <AnimatePresence mode="sync" initial={false}>
         <motion.div
           key={current}
           initial={{ opacity: 0, scale: 1.1 }}
@@ -115,7 +116,7 @@ function HeroSlider({ whatsapp }) {
           }}
           className="absolute inset-0"
         >
-          <img src={`/images/hero/slide-${current + 1}.jpg`} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: slide.focus }} />
+          <HeroImage fetchPriority={current === 0 ? "high" : "auto"} src={`/images/hero/slide-${current + 1}.jpg`} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: slide.focus }} />
         </motion.div>
       </AnimatePresence>
 
@@ -283,7 +284,7 @@ function PromoCarousel({ banners, productImages = [] }) {
             >
               {hasBgImage ? (
                 <>
-                  <img src={bgImage} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img loading="lazy" decoding="async" src={bgImage} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   <div className={`absolute inset-0 bg-gradient-to-r ${gradient} opacity-70`} />
                   <div className="absolute inset-0 bg-black/30" />
                 </>
@@ -650,7 +651,7 @@ export default function Home() {
           >
             {cta?.bg_image ? (
               <>
-                <img src={cta.bg_image} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <img loading="lazy" decoding="async" src={cta.bg_image} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-600/80 via-primary-500/70 to-teal-500/80" />
                 <div className="absolute inset-0 bg-black/20" />
               </>
@@ -805,7 +806,7 @@ export default function Home() {
 
         {cta?.bg_image_dark ? (
           <>
-            <img src={cta.bg_image_dark} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+            <img loading="lazy" decoding="async" src={cta.bg_image_dark} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
             <div className="absolute inset-0 bg-gradient-to-b from-slate-900/80 via-slate-900/70 to-slate-900/90" />
           </>
         ) : null}

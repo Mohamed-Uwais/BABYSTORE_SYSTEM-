@@ -4,7 +4,7 @@ import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PageWrapper from '../components/PageWrapper';
-import BarcodeScanner from '../components/BarcodeScanner';
+import BarcodeScanner from '../components/LazyBarcodeScanner';
 import EmptyState from '../components/EmptyState';
 import { TableSkeleton } from '../components/Skeleton';
 import { fuzzySearchProducts } from '../utils/fuzzySearch';
@@ -213,8 +213,8 @@ export default function Inventory() {
       ]);
       setProducts(p.data.data);
       setCategories(c.data.data);
-      setBrands(b.data.data);
-    } finally { setLoading(false); }
+      setBrands(b.data.data || []);
+    } catch { setError('Unable to load inventory. Please retry.'); } finally { setLoading(false); }
   }
 
   const grouped = useMemo(() => {
@@ -973,7 +973,7 @@ function AdjustDrawer({ variant, onClose, onDone, onError }) {
 
 function HistoryDrawer({ variant, onClose }) {
   const [rows, setRows] = useState(null);
-  useEffect(() => { client.get(`/inventory/movements/${variant.variant_id}`).then((res) => setRows(res.data.data)); }, [variant.variant_id]);
+  useEffect(() => { client.get(`/inventory/movements/${variant.variant_id}`).then((res) => setRows(res.data.data || [])).catch(() => setRows([])); }, [variant.variant_id]);
 
   return (
     <Drawer onClose={onClose} title="Stock history">

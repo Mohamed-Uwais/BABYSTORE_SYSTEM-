@@ -1,17 +1,17 @@
+import HeroImage from './HeroImage';
 import { motion } from 'framer-motion';
 
 export default function PageHero({ backgroundImage, headline, subtitle, height = '50vh', focusPoint = 'center center' }) {
   return (
     <section className="relative w-full overflow-hidden" style={{ height, minHeight: '320px' }}>
-      <motion.img
-        src={backgroundImage}
-        alt=""
+      <motion.div
         initial={{ scale: 1 }}
         animate={{ scale: 1.08 }}
         transition={{ duration: 20, ease: 'linear' }}
         className="absolute inset-0 h-full w-full object-cover"
-        style={{ objectPosition: focusPoint }}
-      />
+      >
+        <HeroImage src={backgroundImage} fetchPriority="high" className="h-full w-full object-cover" style={{ objectPosition: focusPoint }} />
+      </motion.div>
       <div className="absolute inset-0 bg-gradient-to-r from-[#1a3c2a]/50 via-[#1a3c2a]/35 to-[#1a3c2a]/30" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}

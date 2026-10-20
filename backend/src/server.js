@@ -30,7 +30,8 @@ const koombiyoController = require('./controllers/koombiyoController');
 const courierController = require('./controllers/courierController');
 const userController = require('./controllers/userController');
 const { protect, requirePermission } = require('./middleware/authMiddleware');
-const userModel = require('./models/userModel');
+const { randomUUID } = require('node:crypto');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
@@ -41,7 +42,7 @@ app.use(express.urlencoded({ extended: true }));
 // Custom JSON parsing error handler
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    console.error('[JSON_PARSE_ERROR]', err.message, 'Body:', req.body);
+    console.error('[JSON_PARSE_ERROR]');
     return res.status(400).json({ 
       success: false, 
       message: 'Invalid JSON in request body',
@@ -51,21 +52,16 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// Request logging middleware for debugging
+// Never log checkout payloads, tokens, or query strings.
 app.use((req, res, next) => {
-  if (req.method === 'POST' && req.path.includes('/checkout')) {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
-      hasAuth: !!req.headers.authorization,
-      contentType: req.headers['content-type'],
-      bodySize: JSON.stringify(req.body).length,
-      bodyKeys: Object.keys(req.body)
-    });
-  } else {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
-      hasAuth: !!req.headers.authorization,
-      contentType: req.headers['content-type']
-    });
-  }
+  req.requestId = randomUUID();
+  res.setHeader('X-Request-ID', req.requestId);
+  const started = Date.now();
+  res.on('finish', () => {
+    if (res.statusCode >= 400 || process.env.NODE_ENV !== 'production') {
+      console.log('[REQUEST]', { requestId: req.requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - started });
+    }
+  });
   next();
 });
 
@@ -83,7 +79,10 @@ app.use('/api/suppliers', protect, requirePermission('purchasing'), supplierRout
 app.use('/api/purchase-orders', protect, requirePermission('purchasing'), purchaseOrderRoutes);
 app.use('/api/catalog', protect, requirePermission('inventory'), catalogRoutes);
 app.use('/api/inventory', protect, requirePermission('inventory'), inventoryRoutes);
-app.use('/api/settings', protect, requirePermission('settings'), settingsRoutes);
+app.use('/api/settings', protect, (req, res, next) => {
+  if (req.method === 'GET' && req.path === '/') return next(); // Receipt/store metadata is needed by cashiers.
+  return requirePermission('settings')(req, res, next);
+}, settingsRoutes);
 app.use('/api/dashboard', protect, requirePermission('reports'), dashboardRoutes);
 app.use('/api/delivery', protect, requirePermission('deliveries', 'billing'), deliveryRoutes);
 app.use('/api/tags', protect, requirePermission('inventory'), tagRoutes);
@@ -117,14 +116,10 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/me', protect, async (req, res) => {
-  const permissions = await userModel.getPermissions(req.user.id, req.user.role);
-  res.json({ success: true, data: { ...req.user, permissions } });
+  res.json({ success: true, data: req.user });
 });
 
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(err.status || 400).json({ success: false, message: err.message || 'Request failed' });
-});
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5001;
 

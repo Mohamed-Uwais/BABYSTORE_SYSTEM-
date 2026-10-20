@@ -1,7 +1,10 @@
 const db = require('../config/db');
 const imageModel = require('./productImageModel');
 
-async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSale, sort, search, limit = 24, offset = 0 }) {
+async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSale, sort, search, view, limit = 24, offset = 0 }) {
+  limit = Math.max(1, Math.min(1000, Number.parseInt(limit, 10) || 24));
+  offset = Math.max(0, Number.parseInt(offset, 10) || 0);
+  const compact = view === 'card';
   let where = 'p.is_active = TRUE AND p.show_on_website = TRUE AND pv.is_active = TRUE';
   const params = [];
 
@@ -18,8 +21,8 @@ async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSal
   }
 
   let orderBy = 'p.created_at DESC';
-  if (sort === 'price_asc') orderBy = 'pv.retail_price ASC';
-  else if (sort === 'price_desc') orderBy = 'pv.retail_price DESC';
+  if (sort === 'price_asc') orderBy = 'MIN(pv.retail_price) ASC';
+  else if (sort === 'price_desc') orderBy = 'MIN(pv.retail_price) DESC';
   else if (sort === 'best_selling') orderBy = 'units_sold DESC';
   else if (sort === 'newest') orderBy = 'p.created_at DESC';
 
@@ -35,7 +38,7 @@ async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSal
 
   const dataSQL = `
     SELECT
-      p.id, p.name, p.slug, p.description,
+      p.id, p.name, p.slug, ${compact ? '' : 'p.description,'}
       c.name AS category_name, b.name AS brand_name,
       MIN(pv.id) AS variant_id,
       MIN(pv.variant_label) AS variant_label,
@@ -57,11 +60,11 @@ async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSal
         WHEN pv.discount_type = 'amount' THEN GREATEST(pv.retail_price - pv.discount_value, 0)
         ELSE pv.retail_price
       END) AS min_discounted_price,
-      COALESCE((SELECT SUM(oi.quantity) FROM order_items oi
+      ${!compact || sort === 'best_selling' ? `COALESCE((SELECT SUM(oi.quantity) FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
                 WHERE oi.variant_id = MIN(pv.id)
                 AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                AND o.status IN ('completed', 'delivered')), 0) AS units_sold,
+                AND o.status IN ('completed', 'delivered')), 0) AS units_sold,` : ''}
       (SELECT COUNT(*) > 0 FROM variant_price_tiers vpt WHERE vpt.variant_id = MIN(pv.id)) AS has_tiers
     FROM products p
     JOIN product_variants pv ON pv.product_id = p.id
@@ -69,7 +72,7 @@ async function getProducts({ category, brand, minPrice, maxPrice, inStock, onSal
     LEFT JOIN brands b ON p.brand_id = b.id
     WHERE ${where}
     GROUP BY p.id
-    ORDER BY ${orderBy}
+    ORDER BY ${orderBy}, p.id DESC
     LIMIT ? OFFSET ?
   `;
 

@@ -54,10 +54,10 @@ export default function Header() {
   return (
     <>
       <header
-        className={`sticky top-0 z-50 transition-all duration-300 ${
+        className={`sticky top-0 z-50 py-3 transition-colors duration-300 ${
           scrolled
-            ? 'bg-white/90 shadow-sm backdrop-blur-lg py-2'
-            : 'bg-white py-3'
+            ? 'bg-white/90 shadow-sm backdrop-blur-lg'
+            : 'bg-white'
         }`}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 lg:px-8">

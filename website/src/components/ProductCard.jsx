@@ -1,8 +1,8 @@
-import { useRef, useCallback, useState } from 'react';
+import { memo, useEffect, useRef, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { ShoppingCart, Check } from 'lucide-react';
-import { useCart } from '../context/CartContext';
+import { useCartActions } from '../context/CartContext';
 import { usePromo } from '../context/PromoContext';
 
 const placeholder = 'data:image/svg+xml,' + encodeURIComponent(
@@ -13,17 +13,21 @@ function formatPrice(amount) {
   return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-export default function ProductCard({ product, index = 0 }) {
+function ProductCard({ product, index = 0 }) {
   const {
     id, name, slug, brand_name, retail_price, mrp, image_url,
     in_stock, on_sale, discounted_price, min_discounted_price, variant_count, has_tiers,
     second_image_url, discount_type, discount_value,
   } = product;
 
-  const { addItem } = useCart();
+  const { addItem } = useCartActions();
   const { getProductPromos } = usePromo();
   const [added, setAdded] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [loadSecondary, setLoadSecondary] = useState(false);
+  const [secondaryLoaded, setSecondaryLoaded] = useState(null);
+  const addedTimer = useRef(null);
+  useEffect(() => () => clearTimeout(addedTimer.current), []);
 
   const promos = getProductPromos(id, product.category_id, product.brand_id);
   const promoBadge = promos.length > 0 ? promos[0] : null;
@@ -43,19 +47,21 @@ export default function ProductCard({ product, index = 0 }) {
   const showStrikePrice = hasMrpDiscount ? Number(mrp) : (hasDiscount ? Number(retail_price) : null);
 
   const ref = useRef(null);
+  const rectRef = useRef(null);
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [5, -5]), { stiffness: 300, damping: 30 });
   const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-5, 5]), { stiffness: 300, damping: 30 });
 
   const handleMouse = useCallback((e) => {
-    const rect = ref.current?.getBoundingClientRect();
+    if (e.pointerType !== 'mouse') return;
+    const rect = rectRef.current;
     if (!rect) return;
     x.set((e.clientX - rect.left) / rect.width - 0.5);
     y.set((e.clientY - rect.top) / rect.height - 0.5);
   }, [x, y]);
 
-  const handleLeave = useCallback(() => { x.set(0); y.set(0); }, [x, y]);
+  const handleLeave = useCallback(() => { rectRef.current = null; x.set(0); y.set(0); }, [x, y]);
 
   const handleAddToCart = (e) => {
     e.preventDefault();
@@ -67,7 +73,8 @@ export default function ProductCard({ product, index = 0 }) {
       1
     );
     setAdded(true);
-    setTimeout(() => setAdded(false), 1800);
+    clearTimeout(addedTimer.current);
+    addedTimer.current = setTimeout(() => setAdded(false), 1800);
   };
 
   return (
@@ -79,8 +86,15 @@ export default function ProductCard({ product, index = 0 }) {
     >
       <motion.div
         ref={ref}
-        onMouseMove={handleMouse}
-        onMouseLeave={handleLeave}
+        onPointerEnter={e => {
+          if (e.pointerType === 'mouse') {
+            rectRef.current = ref.current?.getBoundingClientRect();
+            setLoadSecondary(true);
+          }
+        }}
+        onFocus={() => setLoadSecondary(true)}
+        onPointerMove={handleMouse}
+        onPointerLeave={handleLeave}
         style={{ rotateX, rotateY, transformPerspective: 800 }}
       >
         <Link
@@ -93,15 +107,22 @@ export default function ProductCard({ product, index = 0 }) {
               src={image_url || placeholder}
               alt={name}
               loading="lazy"
+              decoding="async"
+              width="400"
+              height="400"
               onLoad={() => setImgLoaded(true)}
-              className={`h-full w-full object-cover transition-all duration-500 ${second_image_url ? 'group-hover:opacity-0' : 'group-hover:scale-105'} ${imgLoaded ? '' : 'blur-sm scale-105'}`}
+              className={`h-full w-full object-cover transition-[opacity,transform] duration-500 ${second_image_url && secondaryLoaded === second_image_url ? 'group-hover:opacity-0' : 'group-hover:scale-105'} ${imgLoaded ? '' : 'scale-105'}`}
             />
-            {second_image_url && (
+            {second_image_url && loadSecondary && (
               <img
                 src={second_image_url}
                 alt={name}
                 loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                decoding="async"
+                width="400"
+                height="400"
+                onLoad={() => setSecondaryLoaded(second_image_url)}
+                className={`absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 ${secondaryLoaded === second_image_url ? 'group-hover:opacity-100' : ''}`}
               />
             )}
 
@@ -183,3 +204,5 @@ export default function ProductCard({ product, index = 0 }) {
     </motion.div>
   );
 }
+
+export default memo(ProductCard);

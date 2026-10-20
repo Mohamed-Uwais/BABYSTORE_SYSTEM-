@@ -1,5 +1,7 @@
 const db = require('../config/db');
 const customerModel = require('./customerModel');
+const { claimRequest, requestHash } = require('../utils/checkoutRequest');
+const { normalizeOrder } = require('../utils/validateOrder');
 
 // Generates order numbers like ORD-2026-000123
 async function generateOrderNumber(connection) {
@@ -34,10 +36,23 @@ const next = String(Number(row.maxNum) + 1).padStart(6, '0');
  *   discount_total, delivery_fee, notes
  * }
  */
-async function createOrder(payload) {
-  const connection = await db.getConnection();
+async function createOrder(payload, transactionConnection = null) {
+  payload = normalizeOrder(payload);
+  const connection = transactionConnection || await db.getConnection();
+  let numberLock = false;
   try {
-    await connection.beginTransaction();
+    // Serializes number allocation across workers without changing order numbers.
+    if (!transactionConnection) {
+      const [[lock]] = await connection.query("SELECT GET_LOCK('littora:order-number', 10) AS acquired");
+      if (Number(lock.acquired) !== 1) throw Object.assign(new Error('Checkout is busy. Please retry.'), { status: 503 });
+      numberLock = true;
+      await connection.beginTransaction();
+    }
+    const replay = await claimRequest(connection, payload.request_key, payload.request_hash || requestHash(payload));
+    if (replay) {
+      if (!transactionConnection) await connection.commit();
+      return replay;
+    }
 
     const {
       channel, customer_id, cashier_id, items, payments,
@@ -88,13 +103,15 @@ async function createOrder(payload) {
     }
 
     // --- 2. Validate stock availability for every item BEFORE touching anything ---
-    for (const item of items) {
+    const quantities = new Map();
+    for (const item of items) quantities.set(item.variant_id, (quantities.get(item.variant_id) || 0) + item.quantity);
+    for (const item of [...items].sort((a, b) => a.variant_id - b.variant_id)) {
       const [[variant]] = await connection.query(
         'SELECT current_stock, retail_price, cost_price FROM product_variants WHERE id = ? FOR UPDATE',
         [item.variant_id]
       );
       if (!variant) throw new Error(`Variant ${item.variant_id} not found`);
-      if (variant.current_stock < item.quantity) {
+      if (variant.current_stock < quantities.get(item.variant_id)) {
         throw new Error(`Insufficient stock for variant ${item.variant_id}: have ${variant.current_stock}, need ${item.quantity}`);
       }
       item._cost_price = variant.cost_price || 0;
@@ -259,14 +276,25 @@ async function createOrder(payload) {
       [orderId, initialStatus, cashier_id || null, 'Order created']
     );
 
-    await connection.commit();
+    if (payload.payment_slip_url) {
+      await connection.query('UPDATE orders SET payment_slip_url = ? WHERE id = ?', [payload.payment_slip_url, orderId]);
+    }
+    if (payload.request_key) {
+      await connection.query('UPDATE checkout_requests SET order_id = ? WHERE request_key = ?', [orderId, payload.request_key]);
+    }
+    if (!transactionConnection) await connection.commit();
     return { orderId, order_number, grand_total };
 
   } catch (error) {
-    await connection.rollback();
+    try { if (!transactionConnection) await connection.rollback(); } catch { /* preserve the original failure */ }
+    if (!error.code && !error.status) error.status = 400;
     throw error;
   } finally {
-    connection.release();
+    if (numberLock) {
+      try { await connection.query("SELECT RELEASE_LOCK('littora:order-number')"); }
+      catch { connection.destroy(); }
+    }
+    if (!transactionConnection) connection.release();
   }
 }
 
@@ -310,7 +338,7 @@ async function getAllOrders({ channel, status, limit = 50 } = {}) {
   if (channel) { query += ' AND channel = ?'; params.push(channel); }
   if (status) { query += ' AND status = ?'; params.push(status); }
   query += ' ORDER BY created_at DESC LIMIT ?';
-  params.push(limit);
+  params.push(Math.max(1, Math.min(1000, Number.parseInt(limit, 10) || 50)));
   const [rows] = await db.query(query, params);
   return rows;
 }
@@ -409,7 +437,8 @@ async function processRefund(orderId, refundData, processedBy) {
     await connection.commit();
     return { success: true, new_status: newStatus };
   } catch (error) {
-    await connection.rollback();
+    try { await connection.rollback(); } catch { /* preserve the original failure */ }
+    if (!error.code && !error.status) error.status = 400;
     throw error;
   } finally {
     connection.release();
@@ -430,10 +459,10 @@ async function getOrderReturns(orderId) {
   return rows;
 }
 
-async function processReturnExchange(data, processedBy) {
-  const connection = await db.getConnection();
+async function processReturnExchange(data, processedBy, transactionConnection = null) {
+  const connection = transactionConnection || await db.getConnection();
   try {
-    await connection.beginTransaction();
+    if (!transactionConnection) await connection.beginTransaction();
 
     const { original_order_id, return_items, refund_method, customer_id } = data;
 
@@ -443,9 +472,11 @@ async function processReturnExchange(data, processedBy) {
       throw new Error(`Cannot process returns on an order with status "${order.status}"`);
     }
 
+    if (!Array.isArray(return_items) || !return_items.length) throw new Error('Return items are required');
     let totalRefundAmount = 0;
 
     for (const ri of return_items) {
+      if (!ri || !Number.isSafeInteger(Number(ri.quantity)) || Number(ri.quantity) <= 0) throw new Error('Return quantity must be a positive integer');
       const [[item]] = await connection.query(
         'SELECT oi.*, pv.variant_label, p.name AS product_name FROM order_items oi JOIN product_variants pv ON pv.id = oi.variant_id JOIN products p ON p.id = pv.product_id WHERE oi.id = ? AND oi.order_id = ?',
         [ri.order_item_id, original_order_id]
@@ -520,12 +551,38 @@ async function processReturnExchange(data, processedBy) {
       }
     }
 
-    await connection.commit();
+    if (!transactionConnection) await connection.commit();
     return { success: true, refund_total: totalRefundAmount, refund_method, new_status: newStatus };
   } catch (error) {
-    await connection.rollback();
+    try { if (!transactionConnection) await connection.rollback(); } catch { /* preserve the original failure */ }
+    if (!error.code && !error.status) error.status = 400;
     throw error;
   } finally {
+    if (!transactionConnection) connection.release();
+  }
+}
+
+// The return and replacement must either both commit or both roll back.
+async function processExchange(data, processedBy) {
+  if (!data.replacement) return processReturnExchange(data, processedBy);
+  const connection = await db.getConnection();
+  let numberLock = false;
+  try {
+    const [[lock]] = await connection.query("SELECT GET_LOCK('littora:order-number', 10) AS acquired");
+    if (Number(lock.acquired) !== 1) throw new Error('Checkout is busy. Please retry.');
+    numberLock = true;
+    await connection.beginTransaction();
+    const returned = await processReturnExchange(data, processedBy, connection);
+    const replacement = await createOrder({ ...data.replacement, channel: 'pos', cashier_id: processedBy, request_key: null }, connection);
+    await connection.commit();
+    return { ...returned, replacement };
+  } catch (error) {
+    try { await connection.rollback(); } catch { /* preserve original error */ }
+    throw error;
+  } finally {
+    if (numberLock) {
+      try { await connection.query("SELECT RELEASE_LOCK('littora:order-number')"); } catch { connection.destroy(); }
+    }
     connection.release();
   }
 }
@@ -568,13 +625,21 @@ async function acceptOrder(orderId, acceptedBy) {
       'SELECT id, status, order_number, customer_id, grand_total FROM orders WHERE id = ? FOR UPDATE', [orderId]
     );
     if (!order) throw new Error('Order not found');
+    if (order.status === 'confirmed') { await connection.commit(); return { success: true }; }
     if (order.status !== 'pending') throw new Error(`Cannot accept order with status "${order.status}"`);
 
     const [items] = await connection.query(
-      'SELECT variant_id, quantity FROM order_items WHERE order_id = ?', [orderId]
+      'SELECT variant_id, SUM(quantity) AS quantity FROM order_items WHERE order_id = ? GROUP BY variant_id ORDER BY variant_id', [orderId]
     );
 
     for (const item of items) {
+      // Legacy chatbot orders already deducted stock at creation.
+      const [[movement]] = await connection.query(
+        "SELECT COALESCE(-SUM(change_qty), 0) AS deducted FROM stock_movements WHERE reference_type = 'order' AND reference_id = ? AND variant_id = ? AND reason = 'sale'", [orderId, item.variant_id]
+      );
+      item.quantity = Number(item.quantity) - Number(movement.deducted);
+      if (item.quantity < 0) throw new Error('Order stock history needs review before acceptance');
+      if (item.quantity === 0) continue;
       const [[variant]] = await connection.query(
         'SELECT current_stock FROM product_variants WHERE id = ? FOR UPDATE', [item.variant_id]
       );
@@ -612,7 +677,8 @@ async function acceptOrder(orderId, acceptedBy) {
     await connection.commit();
     return { success: true };
   } catch (error) {
-    await connection.rollback();
+    try { await connection.rollback(); } catch { /* preserve the original failure */ }
+    if (!error.code && !error.status) error.status = 400;
     throw error;
   } finally {
     connection.release();
@@ -620,18 +686,30 @@ async function acceptOrder(orderId, acceptedBy) {
 }
 
 async function rejectOrder(orderId, rejectedBy, rejectionReason) {
-  const [[order]] = await db.query(
-    'SELECT id, status FROM orders WHERE id = ?', [orderId]
-  );
-  if (!order) throw new Error('Order not found');
-  if (order.status !== 'pending') throw new Error(`Cannot reject order with status "${order.status}"`);
-
-  await db.query('UPDATE orders SET status = ? WHERE id = ?', ['cancelled', orderId]);
-  await db.query(
-    'INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)',
-    [orderId, 'cancelled', rejectedBy || null, `Rejected: ${rejectionReason || 'No reason given'}`]
-  );
-  return { success: true };
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[order]] = await connection.query('SELECT id, status FROM orders WHERE id = ? FOR UPDATE', [orderId]);
+    if (!order) throw new Error('Order not found');
+    if (order.status === 'cancelled') { await connection.commit(); return { success: true }; }
+    if (order.status !== 'pending') throw new Error(`Cannot reject order with status "${order.status}"`);
+    const [movements] = await connection.query(
+      "SELECT variant_id, -SUM(change_qty) AS quantity FROM stock_movements WHERE reference_type = 'order' AND reference_id = ? AND reason = 'sale' GROUP BY variant_id ORDER BY variant_id", [orderId]
+    );
+    for (const item of movements) {
+      if (Number(item.quantity) <= 0) continue;
+      await connection.query('UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?', [item.quantity, item.variant_id]);
+      await connection.query("INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id, created_by) VALUES (?, ?, 'refund', 'order', ?, ?)", [item.variant_id, item.quantity, orderId, rejectedBy || null]);
+    }
+    await connection.query('UPDATE orders SET status = ? WHERE id = ?', ['cancelled', orderId]);
+    await connection.query('INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)', [orderId, 'cancelled', rejectedBy || null, `Rejected: ${rejectionReason || 'No reason given'}`]);
+    await connection.commit();
+    return { success: true };
+  } catch (error) {
+    try { await connection.rollback(); } catch { /* preserve the original failure */ }
+    if (!error.code && !error.status) error.status = 400;
+    throw error;
+  } finally { connection.release(); }
 }
 
 async function getPendingOrders() {
@@ -660,4 +738,4 @@ async function getPendingOrders() {
   return orders;
 }
 
-module.exports = { createOrder, getOrderById, getAllOrders, getBestSellers, processRefund, getOrderReturns, processReturnExchange, searchOrderForReturn, getOrderItemsForReturn, acceptOrder, rejectOrder, getPendingOrders };
+module.exports = { processExchange, createOrder, getOrderById, getAllOrders, getBestSellers, processRefund, getOrderReturns, processReturnExchange, searchOrderForReturn, getOrderItemsForReturn, acceptOrder, rejectOrder, getPendingOrders };

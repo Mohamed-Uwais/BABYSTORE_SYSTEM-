@@ -1,33 +1,35 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Billing from './pages/Billing';
-import Inventory from './pages/Inventory';
-import Purchasing from './pages/Purchasing';
-import PurchaseOrderDetail from './pages/PurchaseOrderDetail';
-import Orders from './pages/Orders';
-import Customers from './pages/Customers';
-import Settings from './pages/Settings';
-import Reports from './pages/Reports';
-import StockToggle from './pages/StockToggle';
-import DailySummary from './pages/DailySummary';
-import Deliveries from './pages/Deliveries';
-import Promotions from './pages/Promotions';
-import Conversations from './pages/Conversations';
-import Quotations from './pages/Quotations';
-import WebsiteContent from './pages/WebsiteContent';
-import DataHealth from './pages/DataHealth';
-import Expenses from './pages/Expenses';
-import ProtectedRoute from './components/ProtectedRoute';
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Billing = lazy(() => import('./pages/Billing'));
+const Inventory = lazy(() => import('./pages/Inventory'));
+const Purchasing = lazy(() => import('./pages/Purchasing'));
+const PurchaseOrderDetail = lazy(() => import('./pages/PurchaseOrderDetail'));
+const Orders = lazy(() => import('./pages/Orders'));
+const Customers = lazy(() => import('./pages/Customers'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Reports = lazy(() => import('./pages/Reports'));
+const StockToggle = lazy(() => import('./pages/StockToggle'));
+const DailySummary = lazy(() => import('./pages/DailySummary'));
+const Deliveries = lazy(() => import('./pages/Deliveries'));
+const Promotions = lazy(() => import('./pages/Promotions'));
+const Conversations = lazy(() => import('./pages/Conversations'));
+const Quotations = lazy(() => import('./pages/Quotations'));
+const WebsiteContent = lazy(() => import('./pages/WebsiteContent'));
+const DataHealth = lazy(() => import('./pages/DataHealth'));
+const Expenses = lazy(() => import('./pages/Expenses'));
 import PermissionRoute from './components/PermissionRoute';
 import Sidebar from './components/Sidebar';
 import { useAuth } from './context/AuthContext';
 
 function DefaultRedirect() {
-  const { user } = useAuth();
+  const { user, loading, sessionError, restoreSession, landingPath } = useAuth();
+  if (loading) return <div className="p-6 text-slate-400">Loading...</div>;
+  if (sessionError) return <div role="alert" className="p-6 text-slate-500">{sessionError} <button className="underline" onClick={restoreSession}>Retry</button></div>;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.role === 'owner' ? '/dashboard' : '/billing'} replace />;
+  return landingPath ? <Navigate to={landingPath} replace /> : <div className="p-6 text-slate-500">No pages are assigned to your account. Please contact the owner.</div>;
 }
 
 function AppLayout({ children }) {
@@ -47,16 +49,19 @@ export default function App() {
 
   if (isLogin) {
     return (
+      <Suspense fallback={<div role="status" className="p-6 text-slate-400">Loading...</div>}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route path="/login" element={<Login />} />
         </Routes>
       </AnimatePresence>
+      </Suspense>
     );
   }
 
   return (
     <AppLayout>
+      <Suspense fallback={<div role="status" className="p-6 text-slate-400">Loading...</div>}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route path="/login" element={<Login />} />
@@ -81,6 +86,7 @@ export default function App() {
           <Route path="*" element={<DefaultRedirect />} />
         </Routes>
       </AnimatePresence>
+      </Suspense>
     </AppLayout>
   );
 }

@@ -1,6 +1,7 @@
 const publicModel = require('../models/publicModel');
 const orderModel = require('../models/orderModel');
-const customerModel = require('../models/customerModel');
+const applyPromotions = require('../utils/applyPromotions');
+const { requestHash, completedRequest } = require('../utils/checkoutRequest');
 const deliveryModel = require('../models/deliveryModel');
 const db = require('../config/db');
 
@@ -49,19 +50,47 @@ exports.getNewArrivals = async (req, res, next) => {
 
 exports.checkout = async (req, res, next) => {
   try {
-    let body = req.body;
+    const body = { ...(req.body || {}) };
+    const submissionHash = requestHash(body);
+    const submissionKey = req.headers['idempotency-key'] ? `web:${req.headers['idempotency-key']}` : null;
+    // Replay before recalculating stock/promotions, which may have changed since commit.
+    const replay = await completedRequest(db, submissionKey, submissionHash);
+    if (replay) {
+      if (req.file) await require('node:fs/promises').unlink(req.file.path).catch(() => {});
+      return res.json({ success: true, data: replay });
+    }
     if (typeof body.items === 'string') body.items = JSON.parse(body.items);
-    if (typeof body.payments === 'string') try { body.payments = JSON.parse(body.payments); } catch { body.payments = null; }
+    if (typeof body.payments === 'string') body.payments = JSON.parse(body.payments);
 
     const { phone, full_name, email, items, payments, fulfillment_type,
-            delivery_address, delivery_zone_id, delivery, delivery_fee, notes,
+            delivery_address, delivery_zone_id, notes,
             payment_method } = body;
 
-    if (!items?.length) return res.status(400).json({ success: false, message: 'Cart is empty' });
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ success: false, message: 'Cart is empty' });
     if (!phone) return res.status(400).json({ success: false, message: 'Phone number is required' });
 
+    if (typeof phone !== 'string' || !phone.trim()) return res.status(400).json({ success: false, message: 'Phone number is required' });
+    if (payments && (!Array.isArray(payments) || payments.some(p => !p || !['cod', 'bank_transfer'].includes(p.payment_method)))) {
+      return res.status(400).json({ success: false, message: 'Invalid website payment method' });
+    }
+    if (payment_method && !['cod', 'bank_transfer'].includes(payment_method)) return res.status(400).json({ success: false, message: 'Invalid website payment method' });
     // Server-side tier price lookup — prevents client-side manipulation
     for (const item of items) {
+      if (!item || !Number.isSafeInteger(Number(item.qty)) || Number(item.qty) <= 0 || !Number.isSafeInteger(Number(item.variantId))) {
+        return res.status(400).json({ success: false, message: 'Invalid cart item or quantity' });
+      }
+      item.qty = Number(item.qty);
+      const [[variant]] = await db.query(
+        `SELECT pv.retail_price, pv.discount_type, pv.discount_value, pv.product_id, p.category_id, p.brand_id
+         FROM product_variants pv JOIN products p ON p.id = pv.product_id
+         WHERE pv.id = ? AND pv.is_active = TRUE AND p.is_active = TRUE AND p.show_on_website = TRUE`, [item.variantId]
+      );
+      if (!variant) return res.status(400).json({ success: false, message: 'A cart product is no longer available' });
+      item.price = Number(variant.retail_price);
+      if (variant.discount_type === 'percent') item.price *= 1 - Number(variant.discount_value) / 100;
+      if (variant.discount_type === 'amount') item.price = Math.max(0, item.price - Number(variant.discount_value));
+      item.price = Math.round(item.price * 100) / 100;
+      Object.assign(item, { product_id: variant.product_id, category_id: variant.category_id, brand_id: variant.brand_id });
       const [tiers] = await db.query(
         'SELECT * FROM variant_price_tiers WHERE variant_id = ? ORDER BY min_quantity ASC',
         [item.variantId]
@@ -92,17 +121,16 @@ exports.checkout = async (req, res, next) => {
       calculatedDeliveryFee = feeResult.total_fee;
     }
 
-    let customer_id = null;
-    const [[existing]] = await db.query('SELECT id FROM customers WHERE phone = ?', [phone]);
-    if (existing) {
-      customer_id = existing.id;
-    } else {
-      const [result] = await db.query(
-        'INSERT INTO customers (full_name, phone, email, customer_type) VALUES (?, ?, ?, ?)',
-        [full_name || 'Website Customer', phone, email || null, 'walk_in']
-      );
-      customer_id = result.insertId;
-    }
+    const promotion = await applyPromotions(items.map(i => ({ ...i, variant_id: i.variantId, quantity: i.qty, unit_price: i.price })), body.coupon_code || null);
+    if (promotion.couponError) return res.status(400).json({ success: false, message: promotion.couponError });
+    if (promotion.freeDelivery) calculatedDeliveryFee = 0;
+    // Unique phone handling is atomic; simultaneous first orders share a customer.
+    const [customerResult] = await db.query(
+      `INSERT INTO customers (full_name, phone, email, customer_type) VALUES (?, ?, ?, 'walk_in')
+       ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
+      [full_name || 'Website Customer', phone.trim(), email || null]
+    );
+    const customer_id = customerResult.insertId;
 
     const orderItems = items.map(i => ({
       variant_id: i.variantId,
@@ -118,25 +146,24 @@ exports.checkout = async (req, res, next) => {
       customer_id,
       cashier_id: null,
       items: orderItems,
-      payments: payments || [{ payment_method: payment_method || 'cod', amount: subtotalCalc + calculatedDeliveryFee }],
+      payments: payments || [{ payment_method: payment_method || 'cod', amount: subtotalCalc - promotion.totalDiscount + calculatedDeliveryFee }],
       fulfillment_type: fulfillment_type === 'delivery' ? 'self_delivery' : 'pickup',
       delivery_address: delivery_address || null,
       delivery_zone_id: delivery_zone_id || null,
-      delivery: delivery || null,
-      discount_total: 0,
+      delivery: fulfillment_type === 'delivery' ? { receiver_name: full_name || null, receiver_phone: phone, receiver_address: delivery_address || null } : null,
+      discount_total: promotion.totalDiscount,
       delivery_fee: calculatedDeliveryFee,
       notes: notes || 'Website order',
+      payment_slip_url: req.file ? `/uploads/${req.file.filename}` : null,
+      request_key: submissionKey,
+      request_hash: submissionHash,
     });
 
-    await db.query('UPDATE orders SET status = ? WHERE order_number = ?', ['pending', result.order_number]);
-
-    if (req.file) {
-      const slipUrl = `/uploads/${req.file.filename}`;
-      await db.query('UPDATE orders SET payment_slip_url = ? WHERE order_number = ?', [slipUrl, result.order_number]);
-    }
-
     res.json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err instanceof SyntaxError) err.status = 400;
+    next(err);
+  }
 };
 
 exports.trackOrder = async (req, res, next) => {

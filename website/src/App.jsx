@@ -18,7 +18,7 @@ const Contact = lazy(() => import('./pages/Contact'));
 
 function PageLoader() {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center">
       <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary-200 border-t-primary-500" />
     </div>
   );

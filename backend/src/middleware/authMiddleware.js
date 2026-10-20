@@ -4,20 +4,27 @@ const userModel = require('../models/userModel');
 async function protect(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('[AUTH] Missing/invalid authorization header for', req.method, req.path);
     return res.status(401).json({ success: false, message: 'No token provided' });
   }
 
   const token = authHeader.split(' ')[1];
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const permissions = await userModel.getPermissions(decoded.id, decoded.role);
-    req.user = { ...decoded, permissions };
-    console.log('[AUTH] Token verified for user:', decoded.username, 'accessing', req.path);
-    next();
-  } catch (error) {
-    console.log('[AUTH] Invalid/expired token:', error.message);
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+  }
+  try {
+    const user = await userModel.getUserById(decoded.id);
+    if (!user || !user.is_active) {
+      return res.status(401).json({ success: false, message: 'Account is no longer active' });
+    }
+    const permissions = await userModel.getPermissions(user.id, user.role);
+    req.user = { ...user, permissions };
+    return next();
+  } catch (error) {
+    console.error('[AUTH_SERVICE_ERROR]', { code: error.code || 'UNKNOWN' });
+    return res.status(503).json({ success: false, message: 'Unable to verify your session. Please retry.' });
   }
 }
 

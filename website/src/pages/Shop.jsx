@@ -13,13 +13,16 @@ const SORT_OPTIONS = [
   { value: 'price_desc', label: 'Price: High to Low' },
   { value: 'best_selling', label: 'Best Selling' },
 ];
+const PAGE_SIZE = 24;
 
 export default function Shop() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
+  const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [mobileFilters, setMobileFilters] = useState(false);
 
   const category = searchParams.get('category') || '';
@@ -28,12 +31,15 @@ export default function Shop() {
   const search = searchParams.get('search') || '';
   const inStock = searchParams.get('inStock') || '';
   const onSale = searchParams.get('onSale') || '';
+  const requestedPage = Number(searchParams.get('page'));
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 && requestedPage <= 100000 ? requestedPage : 1;
 
   const setFilter = useCallback((key, value) => {
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       if (value) next.set(key, value);
       else next.delete(key);
+      if (key !== 'page') next.delete('page');
       return next;
     });
   }, [setSearchParams]);
@@ -49,6 +55,8 @@ export default function Shop() {
 
   useEffect(() => {
     setLoading(true);
+    setError('');
+    const controller = new AbortController();
     const params = new URLSearchParams();
     if (category) params.set('category', category);
     if (brand) params.set('brand', brand);
@@ -56,16 +64,24 @@ export default function Shop() {
     if (search) params.set('search', search);
     if (inStock) params.set('inStock', inStock);
     if (onSale) params.set('onSale', onSale);
-    params.set('limit', 1000);
-    params.set('offset', 0);
+    params.set('limit', PAGE_SIZE);
+    params.set('offset', (page - 1) * PAGE_SIZE);
+    params.set('view', 'card');
 
-    api.get(`/products?${params}`)
+    const timer = setTimeout(() => api.get(`/products?${params}`, { signal: controller.signal })
       .then(r => {
-        setProducts(r.data.data.products);
+        if (!controller.signal.aborted) {
+          const data = r.data.data;
+          setProducts(data.products || []);
+          setTotal(Number(data.total) || 0);
+          const lastPage = Math.max(1, Math.ceil((Number(data.total) || 0) / PAGE_SIZE));
+          if (page > lastPage) setFilter('page', String(lastPage));
+        }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [category, brand, sort, search, inStock, onSale]);
+      .catch(() => { if (!controller.signal.aborted) setError('Unable to load products. Please retry.'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); }), 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [category, brand, sort, search, inStock, onSale, page, setFilter]);
 
   const activeFilterCount = [category, brand, inStock, onSale, search].filter(Boolean).length;
 
@@ -103,6 +119,7 @@ export default function Shop() {
                 <X className="h-4 w-4" />
               </button>
             )}
+
           </div>
 
           {/* Sort dropdown */}
@@ -146,6 +163,7 @@ export default function Shop() {
 
           {/* Product grid */}
           <div className="flex-1">
+            {error && <p role="alert" className="mb-4 text-red-600">{error} <button type="button" className="underline" onClick={() => window.location.reload()}>Retry</button></p>}
             {loading ? (
               <div className="flex min-h-[40vh] items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
@@ -163,6 +181,15 @@ export default function Shop() {
               <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
                 {products.map((p, i) => <ProductCard key={p.id} product={p} index={i} />)}
               </div>
+            )}
+            {!loading && !error && total > PAGE_SIZE && (
+              <nav aria-label="Product pages" className="mt-8 flex items-center justify-center gap-4 text-sm text-slate-600">
+                <button type="button" disabled={page <= 1} onClick={() => setFilter('page', String(page - 1))}
+                  className="rounded-xl border border-slate-200 px-4 py-2 disabled:opacity-40">Previous</button>
+                <span aria-live="polite">Page {page} of {Math.ceil(total / PAGE_SIZE)}</span>
+                <button type="button" disabled={page * PAGE_SIZE >= total} onClick={() => setFilter('page', String(page + 1))}
+                  className="rounded-xl border border-slate-200 px-4 py-2 disabled:opacity-40">Next</button>
+              </nav>
             )}
           </div>
         </div>

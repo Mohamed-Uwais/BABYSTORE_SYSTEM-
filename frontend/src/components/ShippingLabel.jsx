@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import html2canvas from 'html2canvas';
 import JsBarcode from 'jsbarcode';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
@@ -126,6 +125,7 @@ export default function ShippingLabel({ order, onClose }) {
     if (!labelRef.current) return;
     setWhatsappBusy(true);
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(labelRef.current, { backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false });
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
       const file = new File([blob], `label-${order.order_number}.jpg`, { type: 'image/jpeg' });

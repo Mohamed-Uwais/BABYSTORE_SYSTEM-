@@ -219,7 +219,7 @@ async function createOrder({ customer_phone, customer_name, delivery_address, it
       const [zones] = await db.query('SELECT base_fee, per_additional_pack_fee FROM delivery_zones WHERE is_active = TRUE ORDER BY base_fee LIMIT 1');
       if (zones.length) {
         const z = zones[0];
-        deliveryFee = z.base_fee + Math.max(0, totalPacks - 1) * (z.per_additional_pack_fee || 100);
+        deliveryFee = Number(z.base_fee) + Math.max(0, totalPacks - 1) * Number(z.per_additional_pack_fee ?? 100);
       }
     }
     const result = await orderService.createOrder({
@@ -264,7 +264,7 @@ async function getDeliveryFee({ zone_name, total_packs }) {
   if (rows.length > 0) {
     return { zones: rows.map(r => {
       const packFee = r.per_additional_pack_fee || 100;
-      const total = r.base_fee + Math.max(0, packs - 1) * packFee;
+      const total = Number(r.base_fee) + Math.max(0, packs - 1) * Number(packFee);
       return { name: r.zone_name, base_fee: r.base_fee, per_additional_pack_fee: packFee, total_packs: packs, total_fee: total };
     }) };
   }

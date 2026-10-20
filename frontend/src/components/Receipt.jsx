@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import html2canvas from 'html2canvas';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 
@@ -93,6 +92,7 @@ export default function Receipt({ orderId, onClose }) {
     if (!receiptRef.current) return;
     setWhatsappBusy(true);
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(receiptRef.current, {
         backgroundColor: '#ffffff',
         scale: 2,

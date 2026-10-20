@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
@@ -41,6 +41,7 @@ const REJECT_REASONS = ['Out of stock', 'Invalid address', 'Suspicious order', '
 export default function Orders() {
   const toast = useToast();
   const { user } = useAuth();
+  const detailRequest = useRef(0);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -74,18 +75,14 @@ export default function Orders() {
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustSubmitting, setAdjustSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadOrders();
-    loadPending();
-    client.get('/couriers').then(r => setCouriers(r.data.data || [])).catch(() => {});
-  }, []);
-
-  async function loadOrders() {
+  const loadOrders = useCallback(async () => {
     setLoading(true);
-    const res = await client.get('/orders');
-    setOrders(res.data.data);
-    setLoading(false);
-  }
+    try {
+      const res = await client.get('/orders');
+      setOrders(res.data.data || []);
+    } catch { toast.error('Unable to load orders. Please retry.'); }
+    finally { setLoading(false); }
+  }, [toast]);
 
   async function loadPending() {
     try {
@@ -93,6 +90,12 @@ export default function Orders() {
       setPendingOrders(res.data.data || []);
     } catch {}
   }
+
+  useEffect(() => {
+    loadOrders();
+    loadPending();
+    client.get('/couriers').then(r => setCouriers(r.data.data || [])).catch(() => {});
+  }, [loadOrders]);
 
   async function handleAdjustTotal() {
     if (!adjustTotal || !adjustReason.trim()) return;
@@ -149,9 +152,12 @@ export default function Orders() {
   async function openOrder(id) {
     setDetailLoading(true);
     setRefundOpen(false);
-    const res = await client.get(`/orders/${id}`);
-    setSelectedOrder(res.data.data);
-    setDetailLoading(false);
+    const version = ++detailRequest.current;
+    try {
+      const res = await client.get(`/orders/${id}`);
+      if (version === detailRequest.current) setSelectedOrder(res.data.data);
+    } catch { toast.error('Unable to load order details. Please retry.'); }
+    finally { if (version === detailRequest.current) setDetailLoading(false); }
   }
 
   function getMaxReturnable(item) {

@@ -12,6 +12,7 @@ async function koombiyoFetch(endpoint, body = {}) {
   try {
     res = await fetch(`${BASE_URL}/${endpoint}`, {
       method: 'POST',
+      signal: AbortSignal.timeout(20000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
     });

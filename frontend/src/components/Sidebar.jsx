@@ -87,13 +87,15 @@ export default function Sidebar() {
   const [healthIssues, setHealthIssues] = useState(0);
 
   useEffect(() => {
+    if (!user) return;
     client.get('/settings').then((res) => {
       const url = res.data.data?.logo_url;
       if (url) setLogoUrl(url);
     }).catch(() => {});
-  }, []);
+  }, [user]);
 
   const fetchAlerts = useCallback(() => {
+    if (!user || !hasPermission('reports')) return;
     client.get('/insights/low-stock-reorder').then(r => setLowStockItems(r.data.data || [])).catch(() => {});
     client.get('/insights/packing-queue').then(r => setPackingQueue(r.data.data || [])).catch(() => {});
     client.get('/chatbot/chatbot-alerts').then(r => setChatbotAlerts(r.data.data || { active_conversations: 0, chatbot_orders: [] })).catch(() => {});
@@ -101,7 +103,7 @@ export default function Sidebar() {
       const d = r.data.data;
       if (d) setHealthIssues(Object.values(d).reduce((s, c) => s + (c.rows?.length || 0), 0));
     }).catch(() => {});
-  }, []);
+  }, [user, hasPermission]);
 
   useEffect(() => {
     fetchAlerts();

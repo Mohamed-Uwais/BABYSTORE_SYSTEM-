@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const CartContext = createContext(null);
+const CartActionsContext = createContext(null);
 const STORAGE_KEY = 'littora_cart';
 
 function loadCart() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(item => item && typeof item.key === 'string' && Number.isFinite(item.price) && item.price >= 0 && Number.isSafeInteger(item.qty) && item.qty > 0) : [];
   } catch { return []; }
 }
 
@@ -15,7 +17,7 @@ export function CartProvider({ children }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* cart stays usable in memory */ }
   }, [items]);
 
   const addItem = useCallback((product, variant, qty = 1) => {
@@ -43,14 +45,14 @@ export function CartProvider({ children }) {
     setOpen(true);
   }, []);
 
-  const updateQty = useCallback((key, qty) => {
-    if (qty < 1) return removeItem(key);
-    setItems(prev => prev.map(i => i.key === key ? { ...i, qty } : i));
-  }, []);
-
   const removeItem = useCallback((key) => {
     setItems(prev => prev.filter(i => i.key !== key));
   }, []);
+
+  const updateQty = useCallback((key, qty) => {
+    if (qty < 1) return removeItem(key);
+    setItems(prev => prev.map(i => i.key === key ? { ...i, qty } : i));
+  }, [removeItem]);
 
   const clearCart = useCallback(() => {
     setItems([]);
@@ -58,14 +60,22 @@ export function CartProvider({ children }) {
 
   const itemCount = useMemo(() => items.reduce((sum, i) => sum + i.qty, 0), [items]);
   const subtotal = useMemo(() => items.reduce((sum, i) => sum + i.price * i.qty, 0), [items]);
+  const actions = useMemo(() => ({ addItem, updateQty, removeItem, clearCart, setOpen }), [addItem, updateQty, removeItem, clearCart]);
+  const value = useMemo(() => ({ items, open, itemCount, subtotal, ...actions }), [items, open, itemCount, subtotal, actions]);
 
   return (
-    <CartContext.Provider value={{ items, open, setOpen, addItem, updateQty, removeItem, clearCart, itemCount, subtotal }}>
+    <CartActionsContext.Provider value={actions}>
+    <CartContext.Provider value={value}>
       {children}
     </CartContext.Provider>
+    </CartActionsContext.Provider>
   );
 }
 
 export function useCart() {
   return useContext(CartContext);
+}
+
+export function useCartActions() {
+  return useContext(CartActionsContext);
 }

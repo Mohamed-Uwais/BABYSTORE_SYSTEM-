@@ -122,4 +122,8 @@ async function start() {
   });
 }
 
-start();
+start().catch(error => {
+  logger.error('Chatbot startup failed', { code: error.code || error.name });
+  process.exitCode = 1;
+  require('./config/db').end().catch(() => {});
+});

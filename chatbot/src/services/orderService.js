@@ -2,39 +2,49 @@ const db = require('../config/db');
 const logger = require('../utils/logger');
 
 async function createOrder({ channel, customerId, items, paymentMethod, deliveryAddress, deliveryZoneId, deliveryFee, notes }) {
+  if (!Array.isArray(items) || !items.length || items.some(i => !i || !Number.isSafeInteger(Number(i.quantity)) || Number(i.quantity) <= 0)) throw new Error('Invalid order quantities');
+  items = items.map(i => ({ ...i, quantity: Number(i.quantity) })).sort((a, b) => a.variant_id - b.variant_id);
+  deliveryFee = Number(deliveryFee || 0);
+  if (!Number.isFinite(deliveryFee) || deliveryFee < 0) throw new Error('Invalid delivery fee');
   const conn = await db.getConnection();
+  let numberLock = false;
   try {
+    const [[lock]] = await conn.query("SELECT GET_LOCK('littora:chatbot-order-number', 10) AS acquired");
+    if (Number(lock.acquired) !== 1) throw new Error('Checkout is busy. Please retry.');
+    numberLock = true;
     await conn.beginTransaction();
 
+    const quantities = new Map();
+    for (const item of items) quantities.set(item.variant_id, (quantities.get(item.variant_id) || 0) + item.quantity);
     let subtotal = 0;
     const orderItems = [];
     for (const item of items) {
       const [variants] = await conn.query(
         `SELECT pv.id, pv.retail_price, pv.cost_price, pv.current_stock, pv.discount_type, pv.discount_value
-         FROM product_variants pv WHERE pv.id = ? AND pv.is_active = TRUE`,
+         FROM product_variants pv WHERE pv.id = ? AND pv.is_active = TRUE FOR UPDATE`,
         [item.variant_id]
       );
       if (variants.length === 0) throw new Error(`Variant ${item.variant_id} not found`);
       const v = variants[0];
-      if (v.current_stock < item.quantity) throw new Error(`Insufficient stock for variant ${item.variant_id}`);
+      if (v.current_stock < quantities.get(item.variant_id)) throw new Error(`Insufficient stock for variant ${item.variant_id}`);
 
-      let unitPrice = v.retail_price;
+      let unitPrice = Number(v.retail_price);
       let discountAmount = 0;
 
       const [tiers] = await conn.query(
-        'SELECT tier_price FROM variant_price_tiers WHERE variant_id = ? AND min_quantity <= ? ORDER BY min_quantity DESC LIMIT 1',
+        'SELECT tier_price, min_quantity FROM variant_price_tiers WHERE variant_id = ? AND min_quantity <= ? ORDER BY min_quantity DESC LIMIT 1',
         [item.variant_id, item.quantity]
       );
       if (tiers.length > 0) {
         const tierTotal = Number(tiers[0].tier_price);
-        unitPrice = Math.round(tierTotal / item.quantity);
+        unitPrice = tierTotal / Number(tiers[0].min_quantity);
         discountAmount = 0;
       } else if (v.discount_type === 'percent' && v.discount_value > 0) {
         discountAmount = Math.round(unitPrice * v.discount_value / 100);
       } else if (v.discount_type === 'amount' && v.discount_value > 0) {
-        discountAmount = v.discount_value;
+        discountAmount = Number(v.discount_value);
       }
-      const lineTotal = tiers.length > 0 ? Number(tiers[0].tier_price) : (unitPrice - discountAmount) * item.quantity;
+      const lineTotal = Math.round((unitPrice - discountAmount) * item.quantity * 100) / 100;
       subtotal += lineTotal;
 
       orderItems.push({
@@ -98,6 +108,9 @@ async function createOrder({ channel, customerId, items, paymentMethod, delivery
     await conn.rollback();
     throw err;
   } finally {
+    if (numberLock) {
+      try { await conn.query("SELECT RELEASE_LOCK('littora:chatbot-order-number')"); } catch { conn.destroy(); }
+    }
     conn.release();
   }
 }
@@ -115,18 +128,29 @@ async function getOrderStatus(orderNumber) {
 }
 
 async function cancelOrder(orderNumber) {
-  const [rows] = await db.query(`SELECT id, status FROM orders WHERE order_number = ?`, [orderNumber]);
-  if (rows.length === 0) return { success: false, message: 'Order not found' };
-  const order = rows[0];
-  if (['shipped', 'delivered', 'completed', 'cancelled'].includes(order.status)) {
-    return { success: false, message: `Order is already ${order.status} and cannot be cancelled` };
-  }
-  await db.query(`UPDATE orders SET status = 'cancelled' WHERE id = ?`, [order.id]);
-  const [items] = await db.query(`SELECT variant_id, quantity FROM order_items WHERE order_id = ?`, [order.id]);
-  for (const item of items) {
-    await db.query(`UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?`, [item.quantity, item.variant_id]);
-  }
-  return { success: true, message: 'Order cancelled successfully' };
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[order]] = await conn.query('SELECT id, status FROM orders WHERE order_number = ? FOR UPDATE', [orderNumber]);
+    if (!order) { await conn.rollback(); return { success: false, message: 'Order not found' }; }
+    if (['shipped', 'delivered', 'completed', 'cancelled', 'refunded', 'partially_refunded'].includes(order.status)) {
+      await conn.rollback();
+      return { success: false, message: `Order is already ${order.status} and cannot be cancelled` };
+    }
+    const [items] = await conn.query("SELECT variant_id, -SUM(change_qty) AS quantity FROM stock_movements WHERE reference_type = 'order' AND reference_id = ? AND reason = 'sale' GROUP BY variant_id ORDER BY variant_id", [order.id]);
+    for (const item of items) {
+      if (Number(item.quantity) <= 0) continue;
+      await conn.query('UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?', [item.quantity, item.variant_id]);
+      await conn.query("INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id) VALUES (?, ?, 'refund', 'order', ?)", [item.variant_id, item.quantity, order.id]);
+    }
+    await conn.query("UPDATE orders SET status = 'cancelled' WHERE id = ?", [order.id]);
+    await conn.query("INSERT INTO order_status_history (order_id, status, notes) VALUES (?, 'cancelled', 'Cancelled via chatbot')", [order.id]);
+    await conn.commit();
+    return { success: true, message: 'Order cancelled successfully' };
+  } catch (error) {
+    try { await conn.rollback(); } catch { /* preserve original error */ }
+    throw error;
+  } finally { conn.release(); }
 }
 
 module.exports = { createOrder, getOrderStatus, cancelOrder };

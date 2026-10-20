@@ -116,8 +116,8 @@ async function exportProducts(req, res) {
 async function exportCustomers(req, res) {
   try {
     const [rows] = await db.query(`
-      SELECT c.full_name, c.phone, c.email, c.address, c.customer_type, c.tier,
-             c.loyalty_points, c.credit_balance,
+      SELECT c.full_name, c.phone, c.email, c.address, c.customer_type, c.loyalty_tier AS tier,
+             c.loyalty_points_balance AS loyalty_points, c.credit_balance,
              COUNT(o.id) AS total_orders,
              COALESCE(SUM(o.grand_total), 0) AS total_spent
       FROM customers c

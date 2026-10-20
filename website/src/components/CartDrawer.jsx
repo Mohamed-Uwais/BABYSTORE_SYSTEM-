@@ -16,16 +16,18 @@ export default function CartDrawer() {
 
   useEffect(() => {
     if (!open || items.length === 0) { setPromos([]); setPromoDiscount(0); return; }
+    const controller = new AbortController();
     const timer = setTimeout(() => {
       api.post('/promotions/calculate', {
         items: items.map(i => ({ variantId: i.variantId, qty: i.qty, price: i.price })),
-      }).then(r => {
+      }, { signal: controller.signal }).then(r => {
+        if (controller.signal.aborted) return;
         const auto = (r.data.data.appliedPromotions || []).filter(p => p.promo_type !== 'coupon_code');
         setPromos(auto);
         setPromoDiscount(auto.reduce((s, p) => s + (p.discount || 0), 0));
       }).catch(() => {});
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [open, items]);
 
   return (

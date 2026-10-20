@@ -11,10 +11,10 @@ function formatPrice(amount) {
   return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-async function fetchDeliveryFee(totalPacks, zoneId) {
+async function fetchDeliveryFee(totalPacks, zoneId, signal) {
   if (totalPacks <= 0 || !zoneId) return null;
   try {
-    const r = await api.get('/delivery/calculate-fee', { params: { total_packs: totalPacks, zone_id: zoneId } });
+    const r = await api.get('/delivery/calculate-fee', { params: { total_packs: totalPacks, zone_id: zoneId }, signal });
     return r.data.data;
   } catch {
     return null;
@@ -37,6 +37,7 @@ export default function Checkout() {
   const { items, subtotal, clearCart, itemCount } = useCart();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const submissionBusy = useRef(false);
   const [error, setError] = useState('');
   const [paymentSlip, setPaymentSlip] = useState(null);
   const [slipPreview, setSlipPreview] = useState(null);
@@ -92,7 +93,15 @@ export default function Checkout() {
       setDeliveryBreakdown(null);
       return;
     }
-    fetchDeliveryFee(totalPacks, selectedZoneId).then(setDeliveryBreakdown);
+    const controller = new AbortController();
+    setDeliveryBreakdown(null);
+    fetchDeliveryFee(totalPacks, selectedZoneId, controller.signal).then(data => {
+      if (!controller.signal.aborted) {
+        setDeliveryBreakdown(data);
+        if (!data) setError('Unable to calculate delivery. Please reselect your delivery zone.');
+      }
+    });
+    return () => controller.abort();
   }, [totalPacks, form.fulfillment_type, selectedZoneId]);
 
   const rawDeliveryFee = form.fulfillment_type === 'delivery' ? (deliveryBreakdown?.total_fee || 0) : 0;
@@ -102,22 +111,24 @@ export default function Checkout() {
 
   useEffect(() => {
     if (items.length === 0) return;
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
         const r = await api.post('/promotions/calculate', {
           items: items.map(i => ({ variantId: i.variantId, qty: i.qty, price: i.price })),
           couponCode: couponApplied || undefined,
-        });
+        }, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         const promos = r.data.data.appliedPromotions || [];
         const autos = promos.filter(p => p.promo_type !== 'coupon_code');
         const coupon = promos.find(p => p.promo_type === 'coupon_code');
         setAutoPromos(autos);
         setAutoDiscount(autos.reduce((s, p) => s + (p.discount || 0), 0));
-        if (coupon) setCouponDiscount(coupon.discount || 0);
+        setCouponDiscount(coupon?.discount || 0);
         setPromoFreeDelivery(r.data.data.freeDelivery || false);
       } catch { /* ignore */ }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [items, couponApplied]);
 
   async function handleApplyCoupon() {
@@ -161,6 +172,10 @@ export default function Checkout() {
     setError('');
   };
 
+  useEffect(() => () => {
+    if (slipPreview && slipPreview !== 'pdf') URL.revokeObjectURL(slipPreview);
+  }, [slipPreview]);
+
   const removeSlip = () => {
     setPaymentSlip(null);
     if (slipPreview) URL.revokeObjectURL(slipPreview);
@@ -178,6 +193,12 @@ export default function Checkout() {
   };
 
   const handleSubmit = async () => {
+    if (submissionBusy.current) return;
+    if (form.fulfillment_type === 'delivery' && !deliveryBreakdown) {
+      setError('Please wait for delivery pricing before placing your order.');
+      return;
+    }
+    submissionBusy.current = true;
     setSubmitting(true);
     setError('');
     try {
@@ -207,6 +228,7 @@ export default function Checkout() {
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
+      submissionBusy.current = false;
       setSubmitting(false);
     }
   };

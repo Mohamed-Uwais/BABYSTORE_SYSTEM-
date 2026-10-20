@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import api from '../api/client';
 
 const PromoContext = createContext({
@@ -18,7 +18,7 @@ export function PromoProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  function getProductPromos(productId, categoryId, brandId) {
+  const getProductPromos = useCallback((productId, categoryId, brandId) => {
     return activePromos.filter(p => {
       if (p.promo_type === 'coupon_code') return false;
       if (!p.targets || p.targets.length === 0) return true;
@@ -30,10 +30,11 @@ export function PromoProvider({ children }) {
         return false;
       });
     });
-  }
+  }, [activePromos]);
+  const value = useMemo(() => ({ activePromos, getProductPromos, loading }), [activePromos, getProductPromos, loading]);
 
   return (
-    <PromoContext.Provider value={{ activePromos, getProductPromos, loading }}>
+    <PromoContext.Provider value={value}>
       {children}
     </PromoContext.Provider>
   );

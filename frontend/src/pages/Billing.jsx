@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import BarcodeScanner from '../components/BarcodeScanner';
+import BarcodeScanner from '../components/LazyBarcodeScanner';
 import Receipt from '../components/Receipt';
 import Quotation from '../components/Quotation';
 import PageWrapper from '../components/PageWrapper';
@@ -61,6 +61,7 @@ export default function Billing() {
 
   const [payments, setPayments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const submissionBusy = useRef(false);
   const [error, setError] = useState('');
   const [successOrder, setSuccessOrder] = useState(null);
 
@@ -112,13 +113,6 @@ export default function Billing() {
   const [returnResult, setReturnResult] = useState(null);
 
   useEffect(() => {
-    loadProducts();
-    loadBestSellers();
-    client.get('/delivery/zones').then(r => setZones(r.data.data)).catch(() => {});
-    client.get('/couriers').then(r => setCouriers(r.data.data || [])).catch(() => {});
-  }, []);
-
-  useEffect(() => {
     const qId = searchParams.get('from_quotation');
     if (!qId) return;
     try {
@@ -165,20 +159,31 @@ export default function Billing() {
     }
   }, [customer, fulfillment]);
 
-  async function loadProducts() {
+  const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
     try {
       const res = await client.get('/products');
-      setProducts(res.data.data);
+      setProducts(res.data.data || []);
+    } catch {
+      toast.error('Unable to load products. Please retry.');
     } finally {
       setLoadingProducts(false);
     }
-  }
+  }, [toast]);
 
   async function loadBestSellers() {
-    const res = await client.get('/orders/best-sellers');
-    setBestSellers(res.data.data);
+    try {
+      const res = await client.get('/orders/best-sellers');
+      setBestSellers(res.data.data || []);
+    } catch { setBestSellers([]); }
   }
+
+  useEffect(() => {
+    loadProducts();
+    loadBestSellers();
+    client.get('/delivery/zones').then(r => setZones(r.data.data)).catch(() => {});
+    client.get('/couriers').then(r => setCouriers(r.data.data || [])).catch(() => {});
+  }, [loadProducts]);
 
   const filteredProducts = useMemo(() => {
     let result = products;
@@ -230,6 +235,8 @@ export default function Billing() {
     });
   }
 
+  const addToCartRef = useRef(addToCart);
+  addToCartRef.current = addToCart;
   const handleScan = useCallback((code) => {
     const scanned = String(code).trim();
     const match = productsRef.current.find((p) => p.barcode && String(p.barcode).trim() === scanned);
@@ -242,7 +249,7 @@ export default function Billing() {
       setScanMessage({ type: 'error', text: `${match.name} — out of stock` });
       return;
     }
-    addToCart(match);
+    addToCartRef.current(match);
     setScanMessage({ type: 'success', text: `Added: ${match.name} · ${match.variant_label}` });
   }, []);
 
@@ -323,18 +330,20 @@ export default function Billing() {
     [cart]
   );
   async function processReturn() {
+    if (submissionBusy.current) return;
+    submissionBusy.current = true;
     setError('');
     setReturnProcessing(true);
     try {
       const returnLines = cart.filter(l => l.isReturn);
       const newLines = cart.filter(l => !l.isReturn);
 
-      const returnRes = await client.post('/orders/return-exchange', {
+      const returnPayload = {
         original_order_id: returnOrder.id,
         return_items: returnLines.map(l => ({ order_item_id: l.order_item_id, quantity: l.quantity, reason: 'Customer return' })),
         refund_method: netTotal < 0 ? returnRefundMethod : 'none',
         customer_id: customer?.id || null,
-      });
+      };
 
       if (newLines.length > 0) {
         const exchangeDiscount = promoDiscount + manualDiscount + returnTotal;
@@ -361,11 +370,14 @@ export default function Billing() {
           const courier = getSelectedCourier();
           payload.delivery = { courier_id: courier?.id || null, tracking_number: trackingNumber || null, receiver_name: receiverName || null, receiver_phone: receiverPhone || null, receiver_address: receiverAddress || null };
         }
-        const orderRes = await client.post('/orders/checkout', payload);
-        setSuccessOrder(orderRes.data.data);
-        setReceiptOrderId(orderRes.data.data.orderId);
+        returnPayload.replacement = payload;
       }
 
+      const returnRes = await client.post('/orders/return-exchange', returnPayload);
+      if (returnRes.data.data.replacement) {
+        setSuccessOrder(returnRes.data.data.replacement);
+        setReceiptOrderId(returnRes.data.data.replacement.orderId);
+      }
       const refundAmt = returnRes.data.data.refund_total;
       if (netTotal < 0) {
         toast.success(`Return processed! Refund: Rs. ${Math.abs(netTotal).toFixed(2)} via ${returnRefundMethod === 'store_credit' ? 'credit reduction' : 'cash'}`);
@@ -390,6 +402,7 @@ export default function Billing() {
       setError(err.response?.data?.message ?? 'Return processing failed');
       toast.error('Return processing failed');
     } finally {
+      submissionBusy.current = false;
       setReturnProcessing(false);
     }
   }
@@ -408,18 +421,20 @@ export default function Billing() {
       setAppliedPromos([]); setPromoDiscount(0); setFreeDelivery(false);
       return;
     }
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
         const r = await client.post('/promotions/calculate', {
           items: cart.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price })),
           couponCode: couponApplied || undefined,
-        });
+        }, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         setAppliedPromos(r.data.data.appliedPromotions || []);
         setPromoDiscount(r.data.data.totalDiscount || 0);
         setFreeDelivery(r.data.data.freeDelivery || false);
       } catch { /* ignore */ }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [cart, couponApplied]);
 
   async function applyCoupon() {
@@ -668,6 +683,7 @@ export default function Billing() {
   }
 
   async function completeSale() {
+    if (submissionBusy.current) return;
     setError('');
     
     // Validate cart
@@ -706,6 +722,7 @@ export default function Billing() {
       return;
     }
     
+    submissionBusy.current = true;
     setSubmitting(true);
     try {
       const effectiveFulfillment = getEffectiveFulfillmentType();
@@ -749,7 +766,6 @@ export default function Billing() {
         };
       }
 
-      console.log('[CHECKOUT] Sending payload:', JSON.stringify(payload, null, 2));
       const res = await client.post('/orders/checkout', payload);
       const orderData = res.data.data;
       if (fromQuotation) {
@@ -780,6 +796,7 @@ export default function Billing() {
       setError(err.response?.data?.message ?? 'Checkout failed');
       toast.error('Checkout failed');
     } finally {
+      submissionBusy.current = false;
       setSubmitting(false);
     }
   }

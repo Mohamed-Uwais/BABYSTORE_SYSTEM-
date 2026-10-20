@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const ToastContext = createContext(null);
@@ -14,11 +14,12 @@ export function ToastProvider({ children }) {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
   }, []);
 
-  const toast = {
+  const toast = useMemo(() => ({
     success: (msg) => addToast(msg, 'success'),
     error: (msg) => addToast(msg, 'error', 5000),
     info: (msg) => addToast(msg, 'info'),
-  };
+    warning: (msg) => addToast(msg, 'info', 5000),
+  }), [addToast]);
 
   return (
     <ToastContext.Provider value={toast}>

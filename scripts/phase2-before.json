@@ -1,0 +1,22 @@
+{
+  "frontend": {
+    "initialJsBytes": 1936614,
+    "initialJsGzipBytes": 507351,
+    "initialCssBytes": 120719,
+    "initialCssGzipBytes": 28508,
+    "totalJsBytes": 1936614,
+    "initialFiles": [
+      "assets/index-DdHG3zlF.js"
+    ]
+  },
+  "website": {
+    "initialJsBytes": 462532,
+    "initialJsGzipBytes": 148646,
+    "initialCssBytes": 101201,
+    "initialCssGzipBytes": 16791,
+    "totalJsBytes": 589639,
+    "initialFiles": [
+      "assets/index-DBXoREZp.js"
+    ]
+  }
+}

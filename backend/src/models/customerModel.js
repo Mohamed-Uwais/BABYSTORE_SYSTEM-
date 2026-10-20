@@ -96,21 +96,21 @@ async function convertToLoyalty(id) {
 }
 
 async function recordCreditRepayment(customerId, amount, notes, createdBy) {
-  if (amount <= 0) throw new Error('Amount must be positive');
-
-  const [[customer]] = await db.query('SELECT credit_balance FROM customers WHERE id = ?', [customerId]);
-  if (!customer) throw new Error('Customer not found');
-  const balance = Number(customer.credit_balance);
-  if (balance <= 0) {
-    throw new Error('Customer has no outstanding credit to repay');
-  }
-  if (amount > balance + 0.5) {
-    throw new Error(`Repayment exceeds outstanding balance of Rs. ${balance.toFixed(2)}`);
-  }
+  amount = Number(amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive');
 
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const [[customer]] = await connection.query('SELECT credit_balance FROM customers WHERE id = ? FOR UPDATE', [customerId]);
+    if (!customer) throw new Error('Customer not found');
+    const balance = Number(customer.credit_balance);
+    if (balance <= 0) {
+      throw new Error('Customer has no outstanding credit to repay');
+    }
+    if (amount > balance + 0.5) {
+      throw new Error(`Repayment exceeds outstanding balance of Rs. ${balance.toFixed(2)}`);
+    }
 
     await addLedgerEntry(connection, {
       customer_id: customerId,

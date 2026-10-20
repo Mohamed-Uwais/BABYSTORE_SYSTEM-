@@ -1,0 +1,145 @@
+{
+  "frontend": {
+    "initialJsBytes": 436500,
+    "initialJsGzipBytes": 140402,
+    "initialCssBytes": 90707,
+    "initialCssGzipBytes": 13651,
+    "totalJsBytes": 1948931,
+    "initialFiles": [
+      "assets/index-Dz5wojnV.js",
+      "assets/rolldown-runtime-CNC7AqOf.js",
+      "assets/jsx-runtime-CaR_m4Xc.js",
+      "assets/client-DuFNNaBQ.js"
+    ],
+    "routes": {
+      "src/pages/Billing.jsx": {
+        "jsBytes": 532785,
+        "jsGzipBytes": 164482
+      },
+      "src/pages/Conversations.jsx": {
+        "jsBytes": 450872,
+        "jsGzipBytes": 144817
+      },
+      "src/pages/Customers.jsx": {
+        "jsBytes": 460943,
+        "jsGzipBytes": 147372
+      },
+      "src/pages/DailySummary.jsx": {
+        "jsBytes": 447651,
+        "jsGzipBytes": 143422
+      },
+      "src/pages/Dashboard.jsx": {
+        "jsBytes": 856383,
+        "jsGzipBytes": 259343
+      },
+      "src/pages/DataHealth.jsx": {
+        "jsBytes": 443811,
+        "jsGzipBytes": 143347
+      },
+      "src/pages/Deliveries.jsx": {
+        "jsBytes": 538734,
+        "jsGzipBytes": 161762
+      },
+      "src/pages/Expenses.jsx": {
+        "jsBytes": 774173,
+        "jsGzipBytes": 238604
+      },
+      "src/pages/Inventory.jsx": {
+        "jsBytes": 495407,
+        "jsGzipBytes": 154006
+      },
+      "src/pages/Login.jsx": {
+        "jsBytes": 441999,
+        "jsGzipBytes": 142417
+      },
+      "src/pages/Orders.jsx": {
+        "jsBytes": 545134,
+        "jsGzipBytes": 163539
+      },
+      "src/pages/Promotions.jsx": {
+        "jsBytes": 470598,
+        "jsGzipBytes": 148171
+      },
+      "src/pages/PurchaseOrderDetail.jsx": {
+        "jsBytes": 451693,
+        "jsGzipBytes": 144697
+      },
+      "src/pages/Purchasing.jsx": {
+        "jsBytes": 450034,
+        "jsGzipBytes": 144876
+      },
+      "src/pages/Quotations.jsx": {
+        "jsBytes": 455551,
+        "jsGzipBytes": 146639
+      },
+      "src/pages/Reports.jsx": {
+        "jsBytes": 870982,
+        "jsGzipBytes": 260513
+      },
+      "src/pages/Settings.jsx": {
+        "jsBytes": 468488,
+        "jsGzipBytes": 148224
+      },
+      "src/pages/StockToggle.jsx": {
+        "jsBytes": 442590,
+        "jsGzipBytes": 142834
+      },
+      "src/pages/WebsiteContent.jsx": {
+        "jsBytes": 453683,
+        "jsGzipBytes": 145456
+      }
+    }
+  },
+  "website": {
+    "initialJsBytes": 462841,
+    "initialJsGzipBytes": 148782,
+    "initialCssBytes": 88816,
+    "initialCssGzipBytes": 13048,
+    "totalJsBytes": 600355,
+    "initialFiles": [
+      "assets/index-Du0tv9TQ.js"
+    ],
+    "routes": {
+      "src/pages/About.jsx": {
+        "jsBytes": 480168,
+        "jsGzipBytes": 154858
+      },
+      "src/pages/Blog.jsx": {
+        "jsBytes": 477552,
+        "jsGzipBytes": 153669
+      },
+      "src/pages/BlogPost.jsx": {
+        "jsBytes": 467559,
+        "jsGzipBytes": 150951
+      },
+      "src/pages/Checkout.jsx": {
+        "jsBytes": 486780,
+        "jsGzipBytes": 156357
+      },
+      "src/pages/Contact.jsx": {
+        "jsBytes": 480550,
+        "jsGzipBytes": 154541
+      },
+      "src/pages/Home.jsx": {
+        "jsBytes": 516237,
+        "jsGzipBytes": 164833
+      },
+      "src/pages/OrderConfirmation.jsx": {
+        "jsBytes": 467228,
+        "jsGzipBytes": 150770
+      },
+      "src/pages/ProductDetail.jsx": {
+        "jsBytes": 491361,
+        "jsGzipBytes": 159523
+      },
+      "src/pages/Shop.jsx": {
+        "jsBytes": 493275,
+        "jsGzipBytes": 159164
+      },
+      "src/pages/TrackOrder.jsx": {
+        "jsBytes": 487074,
+        "jsGzipBytes": 156438
+      }
+    }
+  }
+}

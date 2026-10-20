@@ -66,7 +66,7 @@ export default function PurchaseOrderDetail() {
         if (row.variant_id) variants.push({ variant_id: row.variant_id, sku: row.sku, label: `${row.name} · ${row.variant_label}` });
       }
       setAllVariants(variants);
-    });
+    }).catch(() => setError('Unable to load suppliers and products. Please retry.'));
   }
 
   function startEditCosts() {

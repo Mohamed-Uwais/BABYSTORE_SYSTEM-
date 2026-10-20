@@ -1,13 +1,13 @@
 const orderModel = require('../models/orderModel');
 const db = require('../config/db');
 const notifier = require('../utils/orderNotifier');
+const { requestHash } = require('../utils/checkoutRequest');
 
 async function checkout(req, res) {
   try {
-    console.log('[CHECKOUT] Received payload:', JSON.stringify(req.body, null, 2));
     
     // Validate required fields before processing
-    const { channel, items, payments, customer_id, cashier_id } = req.body;
+    const { channel, items, payments, customer_id } = req.body || {};
     
     if (!channel) {
       return res.status(400).json({ success: false, message: 'Missing required field: channel' });
@@ -28,7 +28,7 @@ async function checkout(req, res) {
     // Validate items structure
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (!item.variant_id) return res.status(400).json({ success: false, message: `Item ${i}: missing variant_id` });
+      if (!item?.variant_id) return res.status(400).json({ success: false, message: `Item ${i}: missing variant_id` });
       const qty = Number(item.quantity);
       if (!qty || qty <= 0 || !Number.isFinite(qty)) {
         return res.status(400).json({ success: false, message: `Item ${i}: quantity must be a positive number (got: ${item.quantity})` });
@@ -42,10 +42,10 @@ async function checkout(req, res) {
     // Validate payments structure
     for (let i = 0; i < payments.length; i++) {
       const payment = payments[i];
-      if (!payment.payment_method) return res.status(400).json({ success: false, message: `Payment ${i}: missing payment_method` });
+      if (!payment?.payment_method) return res.status(400).json({ success: false, message: `Payment ${i}: missing payment_method` });
       const amount = Number(payment.amount);
-      if (amount === undefined || amount === null || !Number.isFinite(amount) || amount <= 0) {
-        return res.status(400).json({ success: false, message: `Payment ${i}: amount must be a positive number (got: ${payment.amount})` });
+      if (amount === undefined || amount === null || !Number.isFinite(amount) || amount < 0) {
+        return res.status(400).json({ success: false, message: `Payment ${i}: amount must be a non-negative number (got: ${payment.amount})` });
       }
     }
     
@@ -53,7 +53,7 @@ async function checkout(req, res) {
     const cleanPayload = {
       channel,
       customer_id: customer_id || null,
-      cashier_id: cashier_id || null,
+      cashier_id: req.user.id,
       items,
       payments,
       fulfillment_type: req.body.fulfillment_type || 'pickup',
@@ -62,18 +62,18 @@ async function checkout(req, res) {
       delivery: req.body.delivery || null,
       discount_total: Number(req.body.discount_total) || 0,
       delivery_fee: Number(req.body.delivery_fee) || 0,
-      notes: req.body.notes || null
+      notes: req.body.notes || null,
+      request_key: req.headers['idempotency-key'] ? `pos:${req.user.id}:${req.headers['idempotency-key']}` : null,
+      request_hash: requestHash({ userId: req.user.id, body: req.body })
     };
     
-    console.log('[CHECKOUT] Cleaned payload for model:', JSON.stringify(cleanPayload, null, 2));
     
     const result = await orderModel.createOrder(cleanPayload);
-    console.log('[CHECKOUT] Order created successfully:', result.orderId);
     res.status(201).json({ success: true, message: 'Order completed', data: result });
   } catch (error) {
-    console.error('[CHECKOUT] Error:', error.message, error.stack);
+    console.error('[CHECKOUT_ERROR]', { requestId: req.requestId, code: error.code || error.name });
     // Business-rule errors (stock, credit eligibility, payment mismatch) are safe to show the cashier directly
-    res.status(400).json({ success: false, message: error.message, error: process.env.NODE_ENV === 'development' ? error.stack : undefined });
+    res.status(error.status || (error.code ? 500 : 400)).json({ success: false, message: error.code ? 'Unable to complete checkout. Please retry using the same cart.' : error.message, requestId: req.requestId });
   }
 }
 
@@ -152,7 +152,7 @@ async function getReturnItems(req, res) {
 
 async function returnExchange(req, res) {
   try {
-    const result = await orderModel.processReturnExchange(req.body, req.user.id);
+    const result = await orderModel.processExchange(req.body, req.user.id);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error(error);
