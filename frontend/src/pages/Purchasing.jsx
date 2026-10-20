@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageWrapper from '../components/PageWrapper';
-import BarcodeScanner from '../components/BarcodeScanner';
+import BarcodeScanner from '../components/LazyBarcodeScanner';
 import EmptyState from '../components/EmptyState';
 
 function ScanIcon({ className = 'h-4 w-4' }) {
@@ -42,17 +42,22 @@ export default function Purchasing() {
   const [scanOpen, setScanOpen] = useState(false);
   const [scanMessage, setScanMessage] = useState(null);
   const productsRef = useRef([]);
+  const poSubmittingRef = useRef(false);
+  const [poSubmitting, setPoSubmitting] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
+    setError('');
+    try {
     const [s, ls, po, p] = await Promise.all([
       client.get('/suppliers'), client.get('/products/low-stock'),
       client.get('/purchase-orders'), client.get('/products'),
     ]);
     setSuppliers(s.data.data); setLowStock(ls.data.data);
     setPurchaseOrders(po.data.data); setProducts(p.data.data);
-    productsRef.current = p.data.data;
+    productsRef.current = p.data.data || [];
+    } catch { setError('Unable to load purchasing data. Please retry.'); }
   }
 
   const handlePoScan = useCallback((code) => {
@@ -96,12 +101,16 @@ export default function Purchasing() {
 
   async function submitPO(e) {
     e.preventDefault(); setError('');
+    if (poSubmittingRef.current) return;
     if (!poSupplierId) return setError('Select a supplier');
     if (!poItems.length) return setError('Add at least one item');
+    poSubmittingRef.current = true;
+    setPoSubmitting(true);
     try {
       await client.post('/purchase-orders', { supplier_id: Number(poSupplierId), items: poItems.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity })) });
       setPoItems([]); setPoSupplierId(''); setShowPOForm(false); loadAll(); toast.success('Purchase order created');
     } catch (err) { setError(err.response?.data?.message ?? 'Could not create purchase order'); }
+    finally { poSubmittingRef.current = false; setPoSubmitting(false); }
   }
 
   const ic = 'rounded-xl border border-slate-200 px-2.5 py-1.5 text-sm outline-none transition focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
@@ -196,7 +205,7 @@ export default function Purchasing() {
                       ))}
                     </div>
                   )}
-                  <button type="submit" className="w-full rounded-xl bg-brand-600 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.98]">Create purchase order</button>
+                  <button type="submit" disabled={poSubmitting} className="w-full rounded-xl bg-brand-600 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50">{poSubmitting ? 'Creating purchase order...' : 'Create purchase order'}</button>
                 </motion.form>
               )}
             </AnimatePresence>

@@ -42,8 +42,11 @@ export default function Dashboard() {
   const [deadStock, setDeadStock] = useState([]);
   const [deadStockOpen, setDeadStockOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadError('');
     client.get('/insights/reorder-predictions').then(r => setReorderPredictions(r.data.data || [])).catch(() => {});
     client.get('/insights/dead-stock').then(r => setDeadStock(r.data.data?.items || [])).catch(() => {});
     Promise.all([
@@ -56,6 +59,7 @@ export default function Dashboard() {
       client.get('/dashboard/payment-methods'),
       client.get('/dashboard/recent-orders'),
     ]).then(([sum, chart, best, stf, cust, low, pay, recent]) => {
+      if (cancelled) return;
       setSummary(sum.data.data);
       setSalesChart(chart.data.data);
       setBestSellers(best.data.data);
@@ -64,8 +68,11 @@ export default function Dashboard() {
       setLowStock(low.data.data);
       setPaymentMethods(pay.data.data);
       setRecentOrders(recent.data.data);
-    }).finally(() => setLoading(false));
+    }).catch(() => { if (!cancelled) setLoadError('Unable to load dashboard. Please retry.'); }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [chartDays]);
+
+  if (loadError) return <div role="alert" className="p-6 text-slate-500">{loadError} <button type="button" className="underline" onClick={() => window.location.reload()}>Retry</button></div>;
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -495,7 +502,7 @@ export default function Dashboard() {
                         {daysUntil <= 0 ? 'Overdue' : `In ${daysUntil}d`}
                       </span>
                       {p.phone && (
-                        <a href={`https://wa.me/${p.phone.replace(/\D/g, '').replace(/^0/, '94')}?text=${encodeURIComponent(`Hi ${p.customer_name.split(' ')[0]}! Just checking if you need to restock on ${p.product_name}? 😊`)}`}
+                        <a href={`https://wa.me/${String(p.phone).replace(/\D/g, '').replace(/^0/, '94')}?text=${encodeURIComponent(`Hi ${String(p.customer_name ?? '').trim().split(/\s+/)[0] || 'there'}! Just checking if you need to restock on ${p.product_name}? 😊`)}`}
                           target="_blank" rel="noopener noreferrer"
                           className="rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700">
                           Remind

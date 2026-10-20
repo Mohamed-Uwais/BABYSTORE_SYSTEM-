@@ -2,11 +2,12 @@ const db = require('../config/db');
 
 async function generatePoNumber(connection) {
   const year = new Date().getFullYear();
-  const [[{ count }]] = await connection.query(
-    `SELECT COUNT(*) AS count FROM purchase_orders WHERE po_number LIKE ?`,
-    [`PO-${year}-%`]
+  const [[{ last_number }]] = await connection.query(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(po_number, '-', -1) AS UNSIGNED)), 0) AS last_number
+     FROM purchase_orders WHERE po_number REGEXP ?`,
+    [`^PO-${year}-[0-9]+$`]
   );
-  const next = String(count + 1).padStart(4, '0');
+  const next = String(BigInt(last_number) + 1n).padStart(4, '0');
   return `PO-${year}-${next}`;
 }
 
@@ -15,8 +16,15 @@ async function createPO({ supplier_id, created_by, items }) {
   if (!items || !items.length) throw new Error('Purchase order must contain at least one item');
 
   const connection = await db.getConnection();
+  let locked = false;
+  let transactionStarted = false;
   try {
+    // Acquire before beginning the transaction so waiting writers see the latest commit.
+    const [[lock]] = await connection.query("SELECT GET_LOCK('littora:po-number', 10) AS acquired");
+    if (Number(lock.acquired) !== 1) throw new Error('Purchase order creation is busy. Please try again.');
+    locked = true;
     await connection.beginTransaction();
+    transactionStarted = true;
 
     const po_number = await generatePoNumber(connection);
     const [result] = await connection.query(
@@ -34,12 +42,22 @@ async function createPO({ supplier_id, created_by, items }) {
       );
     }
 
+    const po = await getPOById(poId, connection);
     await connection.commit();
-    return getPOById(poId);
+    transactionStarted = false;
+    return po;
   } catch (error) {
-    await connection.rollback();
+    if (transactionStarted) {
+      try { await connection.rollback(); } catch { /* Preserve the original error. */ }
+    }
     throw error;
   } finally {
+    if (locked) {
+      try {
+        const [[result]] = await connection.query("SELECT RELEASE_LOCK('littora:po-number') AS released");
+        if (Number(result.released) !== 1) connection.destroy();
+      } catch { connection.destroy(); }
+    }
     connection.release();
   }
 }
@@ -60,8 +78,8 @@ async function getAllPOs({ status, supplier_id, limit = 100 } = {}) {
   return rows;
 }
 
-async function getPOById(id) {
-  const [[po]] = await db.query(
+async function getPOById(id, connection = db) {
+  const [[po]] = await connection.query(
     `SELECT po.*, s.name AS supplier_name, s.phone AS supplier_phone
      FROM purchase_orders po
      JOIN suppliers s ON s.id = po.supplier_id
@@ -70,7 +88,7 @@ async function getPOById(id) {
   );
   if (!po) return null;
 
-  const [items] = await db.query(
+  const [items] = await connection.query(
     `SELECT poi.*, pv.sku, pv.variant_label, p.name AS product_name
      FROM purchase_order_items poi
      JOIN product_variants pv ON pv.id = poi.variant_id
@@ -183,13 +201,15 @@ async function markShipped(id) {
 
 // This is when stock actually increases - creates stock_batches + stock_movements per item
 async function markReceived(id, { created_by } = {}) {
-  const po = await getPOById(id);
-  if (!po) throw new Error('Purchase order not found');
-  if (po.status !== 'shipped') throw new Error(`Purchase order must be 'shipped' to mark as received (currently ${po.status})`);
-
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const [[po]] = await connection.query('SELECT id, status FROM purchase_orders WHERE id = ? FOR UPDATE', [id]);
+    if (!po) throw new Error('Purchase order not found');
+    if (po.status === 'received') { await connection.commit(); return getPOById(id); }
+    if (po.status !== 'shipped') throw new Error('Purchase order must be shipped to mark as received');
+    const [items] = await connection.query('SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY variant_id', [id]);
+    po.items = items;
 
     for (const item of po.items) {
       await connection.query(
