@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { normalizeDataHealthReport } from '../utils/dataHealthReport.js';
 import { motion } from 'framer-motion';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -836,19 +837,25 @@ function OrdersTable({ orders }) {
 function DataHealthReport() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const { addToast } = useToast();
 
   useEffect(() => { load(); }, []);
   async function load() {
     setLoading(true);
+    setError('');
     try {
       const res = await client.get('/reports/data-health');
-      setData(res.data.data);
-    } catch { addToast('Failed to load data health check', 'error'); }
+      setData(normalizeDataHealthReport(res.data.data));
+    } catch {
+      setError('Unable to load a complete data health report. Please retry.');
+      addToast('Failed to load data health check', 'error');
+    }
     finally { setLoading(false); }
   }
 
   if (loading) return <ReportSkeleton />;
+  if (error) return <div role="alert" className="p-4 text-red-500">{error} <button type="button" onClick={load} className="underline">Retry</button></div>;
   if (!data) return null;
 
   const { credit_mismatches, points_mismatches, orphaned_payments } = data;
@@ -864,7 +871,7 @@ function DataHealthReport() {
 
       {allClear && (
         <motion.div variants={fadeUp} className="rounded-xl border border-dashed border-emerald-300 py-12 text-center dark:border-emerald-700">
-          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">All clear — no data inconsistencies found</p>
+          <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">No credit, points, or orphaned-payment inconsistencies found</p>
         </motion.div>
       )}
 

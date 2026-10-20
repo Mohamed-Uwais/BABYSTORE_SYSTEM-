@@ -7,7 +7,7 @@ import PageWrapper from '../components/PageWrapper';
 import BarcodeScanner from '../components/LazyBarcodeScanner';
 import EmptyState from '../components/EmptyState';
 import { TableSkeleton } from '../components/Skeleton';
-import { fuzzySearchProducts } from '../utils/fuzzySearch';
+import { filterInventoryGroups } from '../utils/inventorySearch.js';
 
 function money(n) {
   return `Rs. ${Number(n || 0).toFixed(2)}`;
@@ -237,11 +237,7 @@ export default function Inventory() {
   }, [invSearch]);
 
   const filteredGrouped = useMemo(() => {
-    if (!debouncedSearch.trim()) return grouped;
-    const allVariants = grouped.flatMap(p => p.variants.map(v => ({ ...v, name: p.name })));
-    const matched = fuzzySearchProducts(allVariants, debouncedSearch);
-    const matchedProductIds = new Set(matched.map(v => v.product_id));
-    return grouped.filter(p => matchedProductIds.has(p.id));
+    return filterInventoryGroups(grouped, debouncedSearch);
   }, [grouped, debouncedSearch]);
 
   const flatVariants = useMemo(() => {
