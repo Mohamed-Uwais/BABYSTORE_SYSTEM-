@@ -136,11 +136,31 @@ async function createProductWithVariants({ category_id, brand_id, name, slug, de
 }
 
 async function updateProduct(id, { category_id, brand_id, name, description, low_stock_threshold, is_active }) {
-  await db.query(`
+  const connection=await db.getConnection();
+  try{
+    await connection.beginTransaction();
+    const [[current]]=await connection.query('SELECT category_id FROM products WHERE id=?',[id]);
+    if(!current)throw Object.assign(new Error('Product not found'),{status:404});
+    const categoryIds=[...new Set([Number(current.category_id),Number(category_id)].filter(Boolean))].sort((a,b)=>a-b);
+    for(const categoryId of categoryIds)await connection.query('SELECT id FROM categories WHERE id=? FOR UPDATE',[categoryId]);
+    const [[locked]]=await connection.query('SELECT category_id FROM products WHERE id=? FOR UPDATE',[id]);
+    if(locked.category_id!==current.category_id)throw Object.assign(new Error('Product category changed. Reload before saving.'),{status:409});
+    if(Number(category_id)!==Number(current.category_id)){
+      const defs=(await require('./catalogAttributesModel').read(category_id,connection)).definitions;
+      const validate=require('../services/catalogAttributes').values;
+      const decode=value=>typeof value==='string'?JSON.parse(value):value||{};
+      const [products]=await connection.query('SELECT attribute_values FROM website_product_content WHERE product_id=?',[id]);
+      const [variants]=await connection.query('SELECT a.attribute_values FROM website_variant_attributes a JOIN product_variants v ON v.id=a.variant_id WHERE v.product_id=?',[id]);
+      try{for(const row of products)validate(decode(row.attribute_values),defs,'product');for(const row of variants)validate(decode(row.attribute_values),defs,'variant');}
+      catch{throw Object.assign(new Error('Existing filter assignments do not match the destination category. Update its definitions or clear the old assignments before moving this product.'),{status:409});}
+    }
+  await connection.query(`
     UPDATE products
     SET category_id = ?, brand_id = ?, name = ?, description = ?, low_stock_threshold = ?, is_active = ?
     WHERE id = ?
   `, [category_id, brand_id || null, name, description || null, low_stock_threshold || 5, is_active !== false, id]);
+    await connection.commit();
+  }catch(error){await connection.rollback();throw error;}finally{connection.release();}
 }
 
 async function updateVariant(variantId, {

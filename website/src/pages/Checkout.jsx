@@ -1,24 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef,useId } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ChevronLeft, Truck, Store, CreditCard, Loader2, ShieldCheck, Upload, X, CheckCircle2, Image, Tag, Trash2, MapPin, Search } from 'lucide-react';
+import { ChevronLeft, Truck, Store, CreditCard, Loader2, ShieldCheck, Upload, X, CheckCircle2, Tag, MapPin, Search } from 'lucide-react';
 import api from '../api/client';
 import { useCart } from '../context/CartContext';
-import { usePromo } from '../context/PromoContext';
 import SEO from '../components/SEO';
+import { normalizeMobilePhone, MOBILE_PHONE_HELP } from '../../../shared/mobilePhone.mjs';
 
 function formatPrice(amount) {
-  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-async function fetchDeliveryFee(totalPacks, zoneId, signal) {
-  if (totalPacks <= 0 || !zoneId) return null;
-  try {
-    const r = await api.get('/delivery/calculate-fee', { params: { total_packs: totalPacks, zone_id: zoneId }, signal });
-    return r.data.data;
-  } catch {
-    return null;
-  }
+  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 async function fetchDeliveryZones() {
@@ -34,7 +24,7 @@ const STEPS = ['Information', 'Delivery', 'Payment'];
 
 export default function Checkout() {
   const navigate = useNavigate();
-  const { items, subtotal, clearCart, itemCount } = useCart();
+  const { items, subtotal: cartSubtotal, clearCart, itemCount,setOpen } = useCart();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const submissionBusy = useRef(false);
@@ -49,7 +39,6 @@ export default function Checkout() {
   const [couponError, setCouponError] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
   const [autoPromos, setAutoPromos] = useState([]);
-  const [autoDiscount, setAutoDiscount] = useState(0);
   const [promoFreeDelivery, setPromoFreeDelivery] = useState(false);
   const [couponOpen, setCouponOpen] = useState(false);
 
@@ -88,65 +77,41 @@ export default function Checkout() {
   const totalPacks = items.reduce((s, i) => s + i.qty, 0);
   const [deliveryBreakdown, setDeliveryBreakdown] = useState(null);
 
-  useEffect(() => {
-    if (form.fulfillment_type !== 'delivery' || totalPacks <= 0 || !selectedZoneId) {
-      setDeliveryBreakdown(null);
-      return;
-    }
-    const controller = new AbortController();
-    setDeliveryBreakdown(null);
-    fetchDeliveryFee(totalPacks, selectedZoneId, controller.signal).then(data => {
-      if (!controller.signal.aborted) {
-        setDeliveryBreakdown(data);
-        if (!data) setError('Unable to calculate delivery. Please reselect your delivery zone.');
-      }
-    });
-    return () => controller.abort();
-  }, [totalPacks, form.fulfillment_type, selectedZoneId]);
-
-  const rawDeliveryFee = form.fulfillment_type === 'delivery' ? (deliveryBreakdown?.total_fee || 0) : 0;
-  const deliveryFee = promoFreeDelivery ? 0 : rawDeliveryFee;
-  const totalDiscount = autoDiscount + couponDiscount;
-  const grandTotal = subtotal - totalDiscount + deliveryFee;
-
-  useEffect(() => {
-    if (items.length === 0) return;
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const r = await api.post('/promotions/calculate', {
-          items: items.map(i => ({ variantId: i.variantId, qty: i.qty, price: i.price })),
-          couponCode: couponApplied || undefined,
-        }, { signal: controller.signal });
-        if (controller.signal.aborted) return;
-        const promos = r.data.data.appliedPromotions || [];
-        const autos = promos.filter(p => p.promo_type !== 'coupon_code');
-        const coupon = promos.find(p => p.promo_type === 'coupon_code');
-        setAutoPromos(autos);
-        setAutoDiscount(autos.reduce((s, p) => s + (p.discount || 0), 0));
-        setCouponDiscount(coupon?.discount || 0);
-        setPromoFreeDelivery(r.data.data.freeDelivery || false);
-      } catch { /* ignore */ }
-    }, 300);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [items, couponApplied]);
+  const [quoteState,setQuoteState]=useState(null);
+  const [quoteError,setQuoteError]=useState('');
+  const [quoteRevision,setQuoteRevision]=useState(0);
+  const quoteInput=JSON.stringify({items:items.map(item=>({variantId:item.variantId,qty:item.qty})),fulfillment_type:form.fulfillment_type,delivery_zone_id:selectedZoneId||undefined,coupon_code:couponApplied||undefined});
+  const quote=quoteState?.key===quoteInput?quoteState.data:null;
+  const subtotal=quote?.subtotal??cartSubtotal;
+  const deliveryFee=quote?.delivery_fee??0;
+  const totalDiscount=quote?.discount_total??0;
+  const grandTotal=quote?.grand_total??subtotal;
+  useEffect(()=>{
+    if(!items.length)return;
+    const controller=new AbortController();setQuoteError('');setQuoteState(null);setDeliveryBreakdown(null);
+    const input=JSON.parse(quoteInput);
+    if(input.fulfillment_type==='delivery'&&!input.delivery_zone_id)return;
+    const timer=setTimeout(async()=>{
+      try{
+        const response=await api.post('/cart/quote',JSON.parse(quoteInput),{signal:controller.signal});
+        if(controller.signal.aborted)return;
+        const data=response.data.data;setQuoteState({key:quoteInput,data});setDeliveryBreakdown(data.delivery_breakdown);
+        const promos=data.appliedPromotions||[];
+        setAutoPromos(promos.filter(p=>p.promo_type!=='coupon_code'));
+        setCouponDiscount(promos.find(p=>p.promo_type==='coupon_code')?.discount||0);
+        setPromoFreeDelivery(data.freeDelivery);
+      }catch(error){if(!controller.signal.aborted)setQuoteError(error.response?.data?.message||'Unable to check current prices and availability. Please try again.');}
+    },250);
+    return()=>{clearTimeout(timer);controller.abort();};
+  },[quoteInput,quoteRevision,items.length]);
 
   async function handleApplyCoupon() {
     if (!couponCode.trim()) return;
     setCouponLoading(true); setCouponError('');
     try {
-      const r = await api.post('/promotions/validate', {
-        code: couponCode.trim(),
-        items: items.map(i => ({ variantId: i.variantId, qty: i.qty, price: i.price })),
-      });
-      if (!r.data.success) {
-        setCouponError(r.data.message);
-      } else {
-        setCouponApplied(couponCode.trim());
-        setCouponDiscount(r.data.data.discount || 0);
-        setCouponError('');
-      }
-    } catch { setCouponError('Failed to validate coupon'); }
+      await api.post('/cart/quote',{...JSON.parse(quoteInput),coupon_code:couponCode.trim()});
+      setCouponApplied(couponCode.trim());setCouponError('');
+    } catch(error) { setCouponError(error.response?.data?.message||'Failed to validate coupon'); }
     finally { setCouponLoading(false); }
   }
 
@@ -184,7 +149,7 @@ export default function Checkout() {
   };
 
   const canProceed = () => {
-    if (step === 0) return form.full_name.trim() && form.phone.trim() && form.phone.length >= 9;
+    if (step === 0) return form.full_name.trim() && normalizeMobilePhone(form.phone);
     if (step === 1) {
       if (form.fulfillment_type === 'delivery') return form.delivery_address.trim() && selectedZoneId;
       return true;
@@ -194,17 +159,23 @@ export default function Checkout() {
 
   const handleSubmit = async () => {
     if (submissionBusy.current) return;
+    if (!normalizeMobilePhone(form.phone)) {
+      setError(MOBILE_PHONE_HELP);
+      setStep(0);
+      return;
+    }
     if (form.fulfillment_type === 'delivery' && !deliveryBreakdown) {
       setError('Please wait for delivery pricing before placing your order.');
       return;
     }
+    if(!quote){setError('Wait for current prices and availability before confirming.');return;}
     submissionBusy.current = true;
     setSubmitting(true);
     setError('');
     try {
       const formData = new FormData();
       formData.append('full_name', form.full_name.trim());
-      formData.append('phone', form.phone.trim());
+      formData.append('phone', normalizeMobilePhone(form.phone));
       if (form.email.trim()) formData.append('email', form.email.trim());
       formData.append('items', JSON.stringify(items.map(i => ({ variantId: i.variantId, qty: i.qty, price: i.price }))));
       formData.append('fulfillment_type', form.fulfillment_type);
@@ -212,6 +183,8 @@ export default function Checkout() {
         formData.append('delivery_address', form.delivery_address.trim());
         if (selectedZoneId) formData.append('delivery_zone_id', selectedZoneId);
       }
+      formData.append('expected_total', grandTotal);
+      formData.append('quote_signature',quote.signature);
       formData.append('delivery_fee', deliveryFee);
       formData.append('discount_total', totalDiscount);
       if (couponApplied) formData.append('coupon_code', couponApplied);
@@ -227,6 +200,7 @@ export default function Checkout() {
       navigate(`/order-confirmation/${res.data.data.order_number}`);
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+      if([400,409].includes(err.response?.status))setQuoteRevision(value=>value+1);
     } finally {
       submissionBusy.current = false;
       setSubmitting(false);
@@ -247,6 +221,7 @@ export default function Checkout() {
       </div>
 
       <div className="mx-auto max-w-4xl px-4 py-8">
+        {quoteError&&<div role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-red-800">{quoteError} <button type="button" onClick={()=>setQuoteRevision(value=>value+1)} className="underline">Retry price check</button> <button type="button" onClick={()=>setOpen(true)} className="underline">Edit cart</button></div>}
         {/* Step indicators */}
         <div className="mb-8 flex items-center justify-center gap-1">
           {STEPS.map((s, i) => (
@@ -257,7 +232,7 @@ export default function Checkout() {
                 className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   i === step ? 'bg-primary-500 text-white' :
                   i < step ? 'bg-primary-100 text-primary-700 hover:bg-primary-200' :
-                  'bg-slate-100 text-slate-400'
+                  'bg-slate-100 text-slate-500'
                 }`}
               >
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">{i + 1}</span>
@@ -275,6 +250,7 @@ export default function Checkout() {
               <StepCard title="Your Information">
                 <InputField label="Full Name *" value={form.full_name} onChange={v => updateForm('full_name', v)} placeholder="e.g. Amara Perera" />
                 <InputField label="Phone Number *" value={form.phone} onChange={v => updateForm('phone', v)} placeholder="e.g. 077 123 4567" type="tel" />
+                {form.phone && !normalizeMobilePhone(form.phone) && <p role="status" className="mb-4 text-sm text-red-700">{MOBILE_PHONE_HELP}</p>}
                 <InputField label="Email (optional)" value={form.email} onChange={v => updateForm('email', v)} placeholder="e.g. amara@email.com" type="email" />
               </StepCard>
             )}
@@ -310,30 +286,30 @@ export default function Checkout() {
                           selectedZone ? 'border-primary-500 bg-primary-50' : 'border-slate-200 bg-white hover:border-primary-300'
                         }`}
                       >
-                        <MapPin className={`h-4 w-4 shrink-0 ${selectedZone ? 'text-primary-500' : 'text-slate-400'}`} />
-                        <span className={`flex-1 text-sm ${selectedZone ? 'font-medium text-primary-700' : 'text-slate-400'}`}>
+                        <MapPin className={`h-4 w-4 shrink-0 ${selectedZone ? 'text-primary-500' : 'text-slate-500'}`} />
+                        <span className={`flex-1 text-sm ${selectedZone ? 'font-medium text-primary-700' : 'text-slate-500'}`}>
                           {selectedZone ? selectedZone.zone_name : 'Choose your delivery area...'}
                         </span>
-                        <ChevronLeft className={`h-4 w-4 text-slate-400 transition-transform ${zoneDropdownOpen ? 'rotate-90' : '-rotate-90'}`} />
+                        <ChevronLeft className={`h-4 w-4 text-slate-500 transition-transform ${zoneDropdownOpen ? 'rotate-90' : '-rotate-90'}`} />
                       </button>
                       {zoneDropdownOpen && (
                         <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
                           <div className="border-b border-slate-100 p-2">
                             <div className="relative">
-                              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                               <input
                                 type="text"
                                 value={zoneSearch}
                                 onChange={e => setZoneSearch(e.target.value)}
                                 placeholder="Search area..."
                                 autoFocus
-                                className="w-full rounded-lg bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:bg-white focus:ring-1 focus:ring-primary-300"
+                                className="w-full rounded-lg bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none placeholder:text-slate-500 focus:bg-white focus:ring-1 focus:ring-primary-300"
                               />
                             </div>
                           </div>
                           <div className="max-h-48 overflow-y-auto">
                             {filteredZones.length === 0 ? (
-                              <p className="px-4 py-3 text-sm text-slate-400">No areas found</p>
+                              <p className="px-4 py-3 text-sm text-slate-500">No areas found</p>
                             ) : filteredZones.map(z => (
                               <button
                                 key={z.id}
@@ -344,7 +320,7 @@ export default function Checkout() {
                                 }`}
                               >
                                 <span>{z.zone_name}</span>
-                                <span className="text-xs text-slate-400">{formatPrice(z.base_fee)}</span>
+                                <span className="text-xs text-slate-500">{formatPrice(z.base_fee)}</span>
                               </button>
                             ))}
                           </div>
@@ -445,11 +421,11 @@ export default function Checkout() {
                                 <span className="text-sm font-medium">Slip uploaded</span>
                               </div>
                                 <p className="mt-0.5 text-xs text-slate-500 truncate">{paymentSlip?.name}</p>
-                              <p className="text-xs text-slate-400">{paymentSlip?.size > 1024 * 1024 ? `${(paymentSlip.size / (1024 * 1024)).toFixed(1)} MB` : `${(paymentSlip?.size / 1024).toFixed(0)} KB`}</p>
+                              <p className="text-xs text-slate-500">{paymentSlip?.size > 1024 * 1024 ? `${(paymentSlip.size / (1024 * 1024)).toFixed(1)} MB` : `${(paymentSlip?.size / 1024).toFixed(0)} KB`}</p>
                             </div>
                             <button
                               onClick={removeSlip}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm transition-colors hover:bg-red-50 hover:text-red-500"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm transition-colors hover:bg-red-50 hover:text-red-500"
                             >
                               <X className="h-4 w-4" />
                             </button>
@@ -466,7 +442,7 @@ export default function Checkout() {
                           </div>
                           <div>
                             <p className="text-sm font-medium text-slate-700">Click to upload payment slip</p>
-                            <p className="mt-0.5 text-xs text-slate-400">JPEG, PNG, WebP, or PDF — Max 5MB</p>
+                            <p className="mt-0.5 text-xs text-slate-500">JPEG, PNG, WebP, or PDF — Max 5MB</p>
                           </div>
                         </button>
                       )}
@@ -499,7 +475,7 @@ export default function Checkout() {
                               <span className="font-mono">{couponApplied}</span> applied — {formatPrice(couponDiscount)} off!
                             </span>
                           </div>
-                          <button onClick={handleRemoveCoupon} className="rounded-full p-1 text-slate-400 hover:text-red-500">
+                          <button onClick={handleRemoveCoupon} className="rounded-full p-1 text-slate-500 hover:text-red-500">
                             <X className="h-4 w-4" />
                           </button>
                         </div>
@@ -555,11 +531,11 @@ export default function Checkout() {
               ) : (
                 <button
                   onClick={handleSubmit}
-                  disabled={submitting}
+                  disabled={submitting||!quote}
                   className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 px-8 py-3 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg disabled:opacity-70"
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                  {submitting ? 'Placing Order...' : `Place Order — ${formatPrice(grandTotal)}`}
+                  {submitting ? 'Placing Order...' : !quote ? (quoteError?'Update your cart to continue':'Checking prices and availability…') : `Place Order — ${formatPrice(grandTotal)}`}
                 </button>
               )}
             </div>
@@ -575,9 +551,9 @@ export default function Checkout() {
                     <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-50 text-lg">🧷</div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-800 truncate">{item.name}</p>
-                      <p className="text-xs text-slate-400">{item.variantLabel} × {item.qty}</p>
+                      <p className="text-xs text-slate-500">{item.variantLabel} × {item.qty}</p>
                     </div>
-                    <span className="font-mono text-sm font-medium text-slate-700">{formatPrice(item.price * item.qty)}</span>
+                    <span className="font-mono text-sm font-medium text-slate-700">{formatPrice((quote?.items.find(row=>Number(row.variantId)===Number(item.variantId))?.price??item.price) * item.qty)}</span>
                   </div>
                 ))}
               </div>
@@ -606,7 +582,7 @@ export default function Checkout() {
                   <div>
                     <SummaryRow label={selectedZone ? `Delivery (${selectedZone.zone_name})` : 'Delivery Fee'} value={promoFreeDelivery ? 'Free 🚚' : (deliveryBreakdown ? formatPrice(deliveryFee) : '—')} />
                     {!promoFreeDelivery && deliveryBreakdown && totalPacks > 1 && (
-                      <p className="mt-0.5 text-right text-[10px] text-slate-400">
+                      <p className="mt-0.5 text-right text-[10px] text-slate-500">
                         {formatPrice(deliveryBreakdown.base_fee)} + {totalPacks - 1} × {formatPrice(deliveryBreakdown.per_additional_pack_fee)}
                       </p>
                     )}
@@ -642,10 +618,12 @@ function StepCard({ title, children }) {
 }
 
 function InputField({ label, value, onChange, placeholder, type = 'text' }) {
+  const id=useId();
   return (
     <div className="mb-4">
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -659,6 +637,7 @@ function InputField({ label, value, onChange, placeholder, type = 'text' }) {
 function FulfillmentOption({ icon: Icon, label, desc, selected, onClick }) {
   return (
     <button
+      aria-pressed={selected}
       onClick={onClick}
       className={`flex items-center gap-3 rounded-xl border-2 p-4 text-left transition-all ${
         selected ? 'border-primary-500 bg-primary-50' : 'border-slate-200 hover:border-primary-300'
@@ -669,7 +648,7 @@ function FulfillmentOption({ icon: Icon, label, desc, selected, onClick }) {
       </div>
       <div>
         <p className={`text-sm font-semibold ${selected ? 'text-primary-700' : 'text-slate-700'}`}>{label}</p>
-        <p className="text-xs text-slate-400">{desc}</p>
+        <p className="text-xs text-slate-500">{desc}</p>
       </div>
     </button>
   );

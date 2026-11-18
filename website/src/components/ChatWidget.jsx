@@ -73,7 +73,7 @@ export default function ChatWidget() {
   const greeting = messages.length === 0;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-24 sm:bottom-6 right-6 z-50">
       <AnimatePresence>
         {open && (
           <motion.div

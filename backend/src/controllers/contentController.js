@@ -2,10 +2,11 @@ const contentModel = require('../models/contentModel');
 
 async function publicGetAll(req, res) {
   try {
-    const data = await contentModel.getAll();
+    if(req.query.preview){res.setHeader('Cache-Control','no-store');res.setHeader('X-Robots-Tag','noindex, nofollow');}
+    const data=await require('../services/publicContent')(req.query.preview);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(err.status||500).json({ success: false, message: err.message });
   }
 }
 
@@ -23,10 +24,11 @@ async function updateSection(req, res) {
     if (!content || typeof content !== 'object') {
       return res.status(400).json({ success: false, message: 'content must be a JSON object' });
     }
-    const updated = await contentModel.upsert(section_key, content);
+    const clean = require('../services/websiteStudio').validateSection(section_key,content);
+    const updated = await contentModel.upsert(section_key, clean);
     res.json({ success: true, data: updated });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(err.status || 500).json({ success: false, message: err.message });
   }
 }
 

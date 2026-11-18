@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Package, Truck, CheckCircle2, Clock, Loader2, AlertCircle, ExternalLink, RefreshCw, MapPin } from 'lucide-react';
 import api from '../api/client';
 import PageHero from '../components/PageHero';
 import SEO from '../components/SEO';
+import {useCartActions} from '../context/CartContext';
+import {normalizeMobilePhone,MOBILE_PHONE_HELP} from '../../../shared/mobilePhone.mjs';
 
 function formatPrice(amount) {
-  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 const STATUS_CONFIG = {
@@ -27,6 +29,9 @@ const PROGRESS_STEPS = ['Ordered', 'Confirmed', 'Processing', 'Shipped', 'Out fo
 
 export default function TrackOrder() {
   const [searchParams] = useSearchParams();
+  const {addItem}=useCartActions();
+  const [repeating,setRepeating]=useState(false);
+  const [repeatMessage,setRepeatMessage]=useState('');
   const [orderNumber, setOrderNumber] = useState(searchParams.get('order') || '');
   const [phone, setPhone] = useState('');
   const [order, setOrder] = useState(null);
@@ -36,21 +41,18 @@ export default function TrackOrder() {
   const [liveTracking, setLiveTracking] = useState(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
 
-  useEffect(() => {
-    if (searchParams.get('order')) handleSearch(null, searchParams.get('order'));
-  }, []);
-
   const handleSearch = async (e, prefilledOrder) => {
     if (e) e.preventDefault();
     const num = prefilledOrder || orderNumber.trim();
     if (!num) return;
+    if(!normalizeMobilePhone(phone)){setError(MOBILE_PHONE_HELP);setSearched(true);return;}
     setLoading(true);
     setError('');
     setSearched(true);
     setLiveTracking(null);
     try {
       const params = new URLSearchParams({ order_number: num });
-      if (phone.trim()) params.set('phone', phone.trim());
+      params.set('phone', normalizeMobilePhone(phone));
       const res = await api.get(`/track?${params}`);
       setOrder(res.data.data);
       if (res.data.data?.delivery?.tracking_number) {
@@ -67,7 +69,7 @@ export default function TrackOrder() {
   const fetchLiveTracking = async (num) => {
     setTrackingLoading(true);
     try {
-      const res = await api.get(`/track-live/${num || order?.order_number}`);
+      const res = await api.get(`/track-live/${num || order?.order_number}`,{params:{phone:normalizeMobilePhone(phone)}});
       setLiveTracking(res.data.data);
     } catch {
       // silent fail
@@ -88,8 +90,9 @@ export default function TrackOrder() {
         <div className="mx-auto max-w-2xl px-4 text-center">
           <form onSubmit={handleSearch} className="mt-8 space-y-3">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
               <input
+                aria-label="Order number"
                 type="text"
                 value={orderNumber}
                 onChange={e => setOrderNumber(e.target.value)}
@@ -98,15 +101,16 @@ export default function TrackOrder() {
               />
             </div>
             <input
+              aria-label="Order mobile number"
               type="tel"
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              placeholder="Phone number (optional, for verification)"
+              placeholder="Mobile number used for this order (0771234567)"
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100"
             />
             <button
               type="submit"
-              disabled={loading || !orderNumber.trim()}
+              disabled={loading || !orderNumber.trim() || !normalizeMobilePhone(phone)}
               className="w-full rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 py-4 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg disabled:opacity-50"
             >
               {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Track Order'}
@@ -161,12 +165,12 @@ export default function TrackOrder() {
                     <div key={step} className="flex flex-1 items-center">
                       <div className="flex flex-col items-center">
                         <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors ${
-                          i <= currentStep ? 'bg-primary-500 text-white' : 'bg-slate-100 text-slate-400'
+                          i <= currentStep ? 'bg-primary-500 text-white' : 'bg-slate-100 text-slate-500'
                         }`}>
                           {i <= currentStep ? '✓' : i + 1}
                         </div>
                         <span className={`mt-1.5 text-[10px] font-medium leading-tight text-center ${
-                          i <= currentStep ? 'text-primary-600' : 'text-slate-400'
+                          i <= currentStep ? 'text-primary-600' : 'text-slate-500'
                         }`}>{step}</span>
                       </div>
                       {i < PROGRESS_STEPS.length - 1 && (
@@ -223,7 +227,7 @@ export default function TrackOrder() {
                     </a>
                   )}
                   {liveTracking?.cached && (
-                    <p className="text-[11px] text-slate-400 text-center">Cached result — click Refresh after 5 minutes for latest update</p>
+                    <p className="text-[11px] text-slate-500 text-center">Cached result — click Refresh after 5 minutes for latest update</p>
                   )}
                 </div>
               </div>
@@ -232,12 +236,21 @@ export default function TrackOrder() {
             {/* Order details */}
             <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
               <h3 className="text-base font-bold text-slate-900">Order Items</h3>
+              <button type="button" disabled={repeating} className="my-3 rounded-xl bg-primary-700 px-4 py-3 font-semibold text-white disabled:opacity-50" onClick={async()=>{
+                setRepeating(true);setRepeatMessage('');
+                try{const response=await api.post('/repeat-order',{order_number:order.order_number,phone:normalizeMobilePhone(phone)});const data=response.data.data;
+                  data.items.forEach(item=>addItem(item.product,item.variant,item.qty));
+                  setRepeatMessage(`${data.items.length} available item(s) added at current prices. ${data.unavailable.length?`Unavailable: ${data.unavailable.join(', ')}.`:''} ${data.items.some(item=>item.reduced)?'Some quantities were reduced to available stock.':''} Review your cart before checkout.`);
+                }catch(error){setRepeatMessage(error.response?.data?.message||'Unable to rebuild this order. Please try again.');}finally{setRepeating(false);}
+              }}>{repeating?'Checking current availability…':'Shop these items again'}</button>
+              {repeatMessage&&<p role="status" className="mb-3 text-sm text-slate-700">{repeatMessage}</p>}
+
               <div className="mt-4 space-y-3">
                 {order.items.map((item, i) => (
                   <div key={i} className="flex items-center justify-between text-sm">
                     <div>
                       <p className="font-medium text-slate-700">{item.product_name}</p>
-                      <p className="text-xs text-slate-400">{item.variant_label} × {item.quantity}</p>
+                      <p className="text-xs text-slate-500">{item.variant_label} × {item.quantity}</p>
                     </div>
                     <span className="font-mono font-medium text-slate-700">{formatPrice(item.line_total)}</span>
                   </div>
@@ -270,8 +283,8 @@ export default function TrackOrder() {
                       </div>
                       <div className="pb-4">
                         <p className="text-sm font-medium text-slate-700 capitalize">{h.status.replace(/_/g, ' ')}</p>
-                        {h.notes && <p className="text-xs text-slate-400">{h.notes}</p>}
-                        <p className="text-xs text-slate-400">{new Date(h.created_at).toLocaleString('en-GB')}</p>
+                        {h.notes && <p className="text-xs text-slate-500">{h.notes}</p>}
+                        <p className="text-xs text-slate-500">{new Date(h.created_at).toLocaleString('en-GB')}</p>
                       </div>
                     </div>
                   ))}

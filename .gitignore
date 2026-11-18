@@ -24,3 +24,12 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+# Isolated local staging data and credentials
+.staging/
+
+# Generated Python bytecode
+__pycache__/
+*.pyc
+
+# Original website media retained outside the public upload directory.
+backend/storage/website-originals/

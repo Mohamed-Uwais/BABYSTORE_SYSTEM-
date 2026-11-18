@@ -69,7 +69,7 @@ async function editProduct(req, res) {
     res.json({ success: true, message: 'Product updated' });
   } catch (error) {
     console.error(error);
-    res.status(400).json({ success: false, message: error.message });
+    res.status(error.status||400).json({ success: false, message: error.message });
   }
 }
 
@@ -82,7 +82,7 @@ async function editVariant(req, res) {
     res.json({ success: true, message: 'Variant updated' });
   } catch (error) {
     console.error(error);
-    res.status(400).json({ success: false, message: error.message });
+    res.status(error.status||400).json({ success: false, message: error.message });
   }
 }
 
@@ -102,7 +102,7 @@ async function savePriceTiers(req, res) {
     res.json({ success: true, message: 'Price tiers saved' });
   } catch (error) {
     console.error(error);
-    res.status(400).json({ success: false, message: error.message });
+    res.status(error.status||400).json({ success: false, message: error.message });
   }
 }
 

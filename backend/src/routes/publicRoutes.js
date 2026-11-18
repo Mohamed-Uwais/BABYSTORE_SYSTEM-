@@ -4,10 +4,28 @@ const pc = require('../controllers/publicController');
 const promoCtrl = require('../controllers/promotionController');
 const contentCtrl = require('../controllers/contentController');
 const { upload } = require('../middleware/uploadMiddleware');
+router.use(['/track','/track-live','/repeat-order'],require('../middleware/trackingLimiter')());
+router.get('/sitemap.xml',async(req,res,next)=>{try{res.type('application/xml').send(await require('../services/websiteSitemap').render(require('../config/db')));}catch(error){next(error);}});
 
+router.use((req,res,next)=>{if(req.query.preview){res.setHeader('Cache-Control','no-store');res.setHeader('X-Robots-Tag','noindex, nofollow');}next();});
 router.get('/products', pc.getProducts);
 router.get('/products/:slug', pc.getProduct);
 router.get('/categories', pc.getCategories);
+router.get('/category-filters', async (req,res,next) => {
+  try {
+    if (typeof req.query.category !== 'string') return res.json({success:true,data:[]});
+    const db = require('../config/db');
+    const [[category]] = await db.query('SELECT id FROM categories WHERE name=?', [req.query.category]);
+    if (!category) return res.json({success:true,data:[]});
+    const {definitions} = await require('../models/catalogAttributesModel').read(category.id);
+    const [rows] = await db.query(`SELECT va.attribute_values,pc.attribute_values AS product_values FROM product_variants pv
+      LEFT JOIN website_variant_attributes va ON va.variant_id=pv.id
+      JOIN products p ON p.id=pv.product_id LEFT JOIN website_product_content pc ON pc.product_id=p.id
+      WHERE p.category_id=? AND p.is_active=1 AND p.show_on_website=1 AND pv.is_active=1 AND (pv.current_stock-COALESCE((SELECT SUM(quantity) FROM website_stock_reservations WHERE variant_id=pv.id AND state='active'),0))>0`, [category.id]);
+    const decode=value=>typeof value==='string'?JSON.parse(value):value||{};
+    res.json({success:true,data:definitions.map(def=>({...def,options:def.options.filter(option=>rows.some(row=>decode(def.scope==='product'?row.product_values:row.attribute_values)[def.key]?.includes(option)))})).filter(def=>def.options.length)});
+  } catch(error) {next(error);}
+});
 
 // Featured product images for banners (one image per category)
 router.get('/banner-images', async (req, res) => {
@@ -18,7 +36,8 @@ router.get('/banner-images', async (req, res) => {
       FROM product_variants pv
       JOIN products p ON p.id = pv.product_id
       LEFT JOIN categories c ON c.id = p.category_id
-      WHERE pv.is_active = 1 AND p.is_active = 1 AND pv.image_url IS NOT NULL AND pv.image_url != ''
+      WHERE pv.is_active = 1 AND p.is_active = 1 AND p.show_on_website = 1
+        AND (pv.current_stock-COALESCE((SELECT SUM(quantity) FROM website_stock_reservations WHERE variant_id=pv.id AND state='active'),0)) > 0 AND pv.image_url IS NOT NULL AND pv.image_url != ''
       ORDER BY pv.current_stock DESC
       LIMIT 20
     `);
@@ -29,9 +48,12 @@ router.get('/banner-images', async (req, res) => {
 });
 router.get('/brands', pc.getBrands);
 router.get('/best-sellers', pc.getBestSellers);
+router.get('/featured',async(req,res,next)=>{try{res.json({success:true,data:await require('../models/publicModel').getFeatured(await require('../services/publicContent')(req.query.preview))});}catch(error){next(error);}});
 router.get('/new-arrivals', pc.getNewArrivals);
+router.post('/cart/quote', pc.quoteCart);
 router.post('/checkout', upload.single('payment_slip'), pc.checkout);
 router.get('/track', pc.trackOrder);
+router.post('/repeat-order',pc.repeatOrder);
 router.get('/store-info', pc.getStoreInfo);
 router.get('/delivery/zones', pc.getDeliveryZones);
 router.get('/delivery/calculate-fee', pc.calculateDeliveryFee);
@@ -51,6 +73,8 @@ router.get('/track-live/:order_number', async (req, res) => {
   try {
     const db = require('../config/db');
     const { order_number } = req.params;
+    const verified=await require('../models/publicModel').trackOrder(order_number,req.query.phone);
+    if(!verified)return res.status(404).json({success:false,message:'Order and mobile number do not match.'});
     const [[order]] = await db.query('SELECT id FROM orders WHERE order_number = ?', [order_number]);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
@@ -66,7 +90,7 @@ router.get('/track-live/:order_number', async (req, res) => {
       const koombiyo = require('../services/koombiyoService');
       try {
         const result = await koombiyo.trackOrder(delivery.tracking_number);
-        return res.json({ success: true, data: { ...result, courier: 'Koombiyo', tracking_number: delivery.tracking_number } });
+        return res.json({ success: true, data: require('../services/publicTracking')(result,delivery.delivery_status,delivery.tracking_number) });
       } catch {
         return res.json({ success: true, data: { status: delivery.delivery_status || 'unknown', courier: 'Koombiyo', tracking_number: delivery.tracking_number } });
       }

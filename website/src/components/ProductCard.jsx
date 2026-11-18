@@ -1,19 +1,22 @@
-import { memo, useEffect, useRef, useCallback, useState } from 'react';
+import DepthSurface from './DepthSurface';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ShoppingCart, Check } from 'lucide-react';
 import { useCartActions } from '../context/CartContext';
 import { usePromo } from '../context/PromoContext';
+import {useStoreMotion} from './StoreMotion';
 
 const placeholder = 'data:image/svg+xml,' + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><rect fill="#f0f9ff" width="400" height="400"/><g opacity=".35"><rect x="120" y="100" width="160" height="200" rx="16" fill="#bae6fd"/><text x="200" y="210" text-anchor="middle" font-family="system-ui" font-size="28" font-weight="600" fill="#0ea5e9">LD</text></g></svg>`
 );
 
 function formatPrice(amount) {
-  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 function ProductCard({ product, index = 0 }) {
+  const {reduced}=useStoreMotion();
   const {
     id, name, slug, brand_name, retail_price, mrp, image_url,
     in_stock, on_sale, discounted_price, min_discounted_price, variant_count, has_tiers,
@@ -32,7 +35,7 @@ function ProductCard({ product, index = 0 }) {
   const promos = getProductPromos(id, product.category_id, product.brand_id);
   const promoBadge = promos.length > 0 ? promos[0] : null;
 
-  const finalPrice = min_discounted_price || discounted_price || retail_price;
+  const finalPrice = min_discounted_price ?? discounted_price ?? retail_price;
   const hasDiscount = on_sale && Number(finalPrice) < Number(retail_price);
   const hasMrpDiscount = mrp && Number(mrp) > Number(retail_price);
   const mrpPercent = hasMrpDiscount ? Math.round((Number(mrp) - Number(retail_price)) / Number(mrp) * 100) : 0;
@@ -45,23 +48,6 @@ function ProductCard({ product, index = 0 }) {
         ? `-${mrpPercent}%`
         : null;
   const showStrikePrice = hasMrpDiscount ? Number(mrp) : (hasDiscount ? Number(retail_price) : null);
-
-  const ref = useRef(null);
-  const rectRef = useRef(null);
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [5, -5]), { stiffness: 300, damping: 30 });
-  const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-5, 5]), { stiffness: 300, damping: 30 });
-
-  const handleMouse = useCallback((e) => {
-    if (e.pointerType !== 'mouse') return;
-    const rect = rectRef.current;
-    if (!rect) return;
-    x.set((e.clientX - rect.left) / rect.width - 0.5);
-    y.set((e.clientY - rect.top) / rect.height - 0.5);
-  }, [x, y]);
-
-  const handleLeave = useCallback(() => { rectRef.current = null; x.set(0); y.set(0); }, [x, y]);
 
   const handleAddToCart = (e) => {
     e.preventDefault();
@@ -79,30 +65,20 @@ function ProductCard({ product, index = 0 }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30, scale: 0.95 }}
+      initial={reduced?false:{ opacity: 0, y: 20, scale: 0.98 }}
       whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={{ once: true, margin: '-40px' }}
-      transition={{ delay: Math.min(index * 0.06, 0.3), duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ delay: reduced?0:Math.min(index * 0.04, 0.16), duration: reduced?0:0.45, ease: [0.22, 1, 0.36, 1] }}
     >
-      <motion.div
-        ref={ref}
-        onPointerEnter={e => {
-          if (e.pointerType === 'mouse') {
-            rectRef.current = ref.current?.getBoundingClientRect();
-            setLoadSecondary(true);
-          }
-        }}
-        onFocus={() => setLoadSecondary(true)}
-        onPointerMove={handleMouse}
-        onPointerLeave={handleLeave}
-        style={{ rotateX, rotateY, transformPerspective: 800 }}
-      >
+      <DepthSurface className="product-depth">
         <Link
           to={`/product/${slug}`}
-          className="group relative block overflow-hidden rounded-2xl border border-slate-100/80 bg-white shadow-card transition-shadow duration-300 hover:shadow-card-hover"
+          onPointerEnter={event=>{if(event.pointerType==='mouse')setLoadSecondary(true);}}
+          onFocus={()=>setLoadSecondary(true)}
+          className="product-card-face group relative block overflow-hidden rounded-2xl border border-slate-100/80 bg-white shadow-card transition-shadow duration-300 hover:shadow-card-hover"
         >
           {/* Image */}
-          <div className="relative aspect-square overflow-hidden bg-slate-50">
+          <div className="product-media-layer relative aspect-square overflow-hidden bg-slate-50">
             <img
               src={image_url || placeholder}
               alt={name}
@@ -159,7 +135,7 @@ function ProductCard({ product, index = 0 }) {
             {in_stock && (
               <div className="absolute inset-x-0 bottom-0 translate-y-full transition-transform duration-300 ease-out group-hover:translate-y-0">
                 <div className="p-3 pt-8 bg-gradient-to-t from-black/50 to-transparent">
-                  {has_tiers ? (
+                  {has_tiers || variant_count > 1 || !product.variant_id ? (
                     <span className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-xs font-semibold text-slate-800 hover:bg-primary-500 hover:text-white transition-all">
                       View Options
                     </span>
@@ -187,9 +163,10 @@ function ProductCard({ product, index = 0 }) {
             )}
             <h3 className="text-sm font-semibold text-slate-800 leading-snug line-clamp-2 min-h-[2.5rem]">{name}</h3>
             {variant_count > 1 && (
-              <p className="mt-0.5 text-[11px] text-slate-400">{variant_count} sizes available</p>
+              <p className="mt-0.5 text-xs text-slate-600">{variant_count} options</p>
             )}
             <div className="mt-2">
+              {Number(product.pieces_per_pack)>0&&<p className="mb-1 text-xs text-slate-600">{product.pieces_per_pack} pieces · Rs. {(Number(finalPrice)/Number(product.pieces_per_pack)).toFixed(2)} each</p>}
               {showStrikePrice && (
                 <p className="font-mono text-xs text-slate-400 line-through">{formatPrice(showStrikePrice)}</p>
               )}
@@ -200,7 +177,7 @@ function ProductCard({ product, index = 0 }) {
             </div>
           </div>
         </Link>
-      </motion.div>
+      </DepthSurface>
     </motion.div>
   );
 }

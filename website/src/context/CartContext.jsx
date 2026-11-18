@@ -15,6 +15,7 @@ function loadCart() {
 export function CartProvider({ children }) {
   const [items, setItems] = useState(loadCart);
   const [open, setOpen] = useState(false);
+  const [notice,setNotice]=useState('');
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* cart stays usable in memory */ }
@@ -34,7 +35,7 @@ export function CartProvider({ children }) {
         name: product.name,
         brand: product.brand_name,
         variantLabel: variant.label,
-        price: Number(variant.discounted_price || variant.retail_price),
+        price: Number(variant.discounted_price ?? variant.retail_price),
         originalPrice: variant.discounted_price ? Number(variant.retail_price) : null,
         image: product.image_url || variant.image_url,
         slug: product.slug,
@@ -42,6 +43,7 @@ export function CartProvider({ children }) {
         qty,
       }];
     });
+    setNotice(`${qty} × ${product.name} added to your cart.`);
     setOpen(true);
   }, []);
 
@@ -66,6 +68,7 @@ export function CartProvider({ children }) {
   return (
     <CartActionsContext.Provider value={actions}>
     <CartContext.Provider value={value}>
+      <span role="status" aria-live="polite" className="sr-only">{notice}</span>
       {children}
     </CartContext.Provider>
     </CartActionsContext.Provider>

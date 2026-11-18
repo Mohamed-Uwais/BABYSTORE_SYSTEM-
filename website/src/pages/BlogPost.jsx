@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, Clock, Loader2 } from 'lucide-react';
 import api from '../api/client';
 import SEO from '../components/SEO';
+import ManagedMedia from '../components/ManagedMedia';
 
 const COVER_IMAGES = {
   'choosing-right-diaper-size': '/images/blog/diaper-size-guide.svg',
@@ -18,10 +19,12 @@ export default function BlogPost() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get(`/blog/${slug}`)
-      .then(r => setPost(r.data.data))
-      .catch(() => setPost(null))
-      .finally(() => setLoading(false));
+    const controller=new AbortController();setLoading(true);
+    api.get(`/blog/${slug}`,{signal:controller.signal})
+      .then(r => {if(!controller.signal.aborted)setPost(r.data.data);})
+      .catch(() => {if(!controller.signal.aborted)setPost(null);})
+      .finally(() => {if(!controller.signal.aborted)setLoading(false);});
+    return()=>controller.abort();
   }, [slug]);
 
   if (loading) {
@@ -35,6 +38,7 @@ export default function BlogPost() {
   if (!post) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+        <SEO title="Article unavailable" path={`/blog/${encodeURIComponent(slug)}`} noIndex/>
         <span className="mb-4 text-5xl">📝</span>
         <h2 className="text-xl font-bold text-slate-800">Post Not Found</h2>
         <Link to="/blog" className="mt-6 rounded-xl bg-primary-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-600">
@@ -70,7 +74,7 @@ export default function BlogPost() {
           />
         )}
 
-        <div className="mb-6 flex items-center gap-3 text-sm text-slate-400">
+        <div className="mb-6 flex items-center gap-3 text-sm text-slate-500">
           <span>{new Date(post.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
           <span>&middot;</span>
           <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {post.read_time_min} min read</span>
@@ -78,10 +82,11 @@ export default function BlogPost() {
 
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl leading-tight">{post.title}</h1>
 
-        <div
+        {post.content_text!==null&&post.content_text!==undefined?<div className="mt-8 space-y-5">{post.content_text.split(/\n\s*\n/).filter(Boolean).map((text,index)=><p key={index} className="whitespace-pre-line leading-8 text-slate-700">{text}</p>)}</div>:<div
           className="prose prose-slate mt-8 max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-600 prose-li:text-slate-600 prose-a:text-primary-600 prose-strong:text-slate-800"
           dangerouslySetInnerHTML={{ __html: post.content }}
-        />
+        />}
+        <ManagedMedia items={post.media||[]}/>
 
         <div className="mt-12 rounded-2xl bg-primary-50 p-6 text-center">
           <p className="text-sm font-medium text-primary-800">Looking for baby products mentioned in this article?</p>

@@ -26,7 +26,8 @@ async function createOrder({ channel, customerId, items, paymentMethod, delivery
       );
       if (variants.length === 0) throw new Error(`Variant ${item.variant_id} not found`);
       const v = variants[0];
-      if (v.current_stock < quantities.get(item.variant_id)) throw new Error(`Insufficient stock for variant ${item.variant_id}`);
+      const [[holds]]=await conn.query("SELECT COALESCE(SUM(quantity),0) AS reserved FROM website_stock_reservations WHERE variant_id=? AND state='active' FOR UPDATE",[item.variant_id]);
+      if (Number(v.current_stock)-Number(holds.reserved) < quantities.get(item.variant_id)) throw new Error(`Insufficient stock for variant ${item.variant_id}`);
 
       let unitPrice = Number(v.retail_price);
       let discountAmount = 0;
@@ -137,13 +138,16 @@ async function cancelOrder(orderNumber) {
       await conn.rollback();
       return { success: false, message: `Order is already ${order.status} and cannot be cancelled` };
     }
-    const [items] = await conn.query("SELECT variant_id, -SUM(change_qty) AS quantity FROM stock_movements WHERE reference_type = 'order' AND reference_id = ? AND reason = 'sale' GROUP BY variant_id ORDER BY variant_id", [order.id]);
+    const [variants]=await conn.query('SELECT DISTINCT variant_id FROM order_items WHERE order_id=? ORDER BY variant_id',[order.id]);
+    for(const variant of variants)await conn.query('SELECT id FROM product_variants WHERE id=? FOR UPDATE',[variant.variant_id]);
+    const [items] = await conn.query("SELECT variant_id, -SUM(change_qty) AS quantity FROM stock_movements WHERE reference_type = 'order' AND reference_id = ? AND reason IN ('sale','refund') GROUP BY variant_id ORDER BY variant_id", [order.id]);
     for (const item of items) {
       if (Number(item.quantity) <= 0) continue;
       await conn.query('UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?', [item.quantity, item.variant_id]);
       await conn.query("INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id) VALUES (?, ?, 'refund', 'order', ?)", [item.variant_id, item.quantity, order.id]);
     }
     await conn.query("UPDATE orders SET status = 'cancelled' WHERE id = ?", [order.id]);
+    await conn.query("UPDATE website_stock_reservations SET state='released' WHERE order_id=? AND state='active'",[order.id]);
     await conn.query("INSERT INTO order_status_history (order_id, status, notes) VALUES (?, 'cancelled', 'Cancelled via chatbot')", [order.id]);
     await conn.commit();
     return { success: true, message: 'Order cancelled successfully' };

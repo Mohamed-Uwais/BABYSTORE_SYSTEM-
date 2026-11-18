@@ -4,6 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import Layout from './components/Layout';
 import { ContentProvider } from './context/ContentContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import {PageTransition} from './components/StoreMotion';
 
 const Home = lazy(() => import('./pages/Home'));
 const Shop = lazy(() => import('./pages/Shop'));
@@ -15,6 +16,7 @@ const Blog = lazy(() => import('./pages/Blog'));
 const BlogPost = lazy(() => import('./pages/BlogPost'));
 const About = lazy(() => import('./pages/About'));
 const Contact = lazy(() => import('./pages/Contact'));
+const ManagedPage = lazy(() => import('./components/ManagedPage'));
 
 function PageLoader() {
   return (
@@ -32,8 +34,9 @@ export default function App() {
       <ContentProvider>
         <Layout>
           <Suspense fallback={<PageLoader />}>
-            <AnimatePresence mode="wait">
-              <Routes location={location} key={location.pathname}>
+            <AnimatePresence mode="wait" initial={false}>
+              <PageTransition key={location.pathname}>
+              <Routes location={location}>
                 <Route path="/" element={<Home />} />
                 <Route path="/shop" element={<Shop />} />
                 <Route path="/product/:slug" element={<ProductDetail />} />
@@ -44,8 +47,11 @@ export default function App() {
                 <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
+                <Route path="/faq" element={<ManagedPage page="faq" />} />
+                <Route path="/policies/:slug" element={<ManagedPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </PageTransition>
             </AnimatePresence>
           </Suspense>
         </Layout>

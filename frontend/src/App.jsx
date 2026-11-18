@@ -18,6 +18,7 @@ const Promotions = lazy(() => import('./pages/Promotions'));
 const Conversations = lazy(() => import('./pages/Conversations'));
 const Quotations = lazy(() => import('./pages/Quotations'));
 const WebsiteContent = lazy(() => import('./pages/WebsiteContent'));
+const WebsiteFilters = lazy(() => import('./pages/WebsiteFilters'));
 const DataHealth = lazy(() => import('./pages/DataHealth'));
 const Expenses = lazy(() => import('./pages/Expenses'));
 import PermissionRoute from './components/PermissionRoute';
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/dashboard" element={<PermissionRoute permission="reports"><Dashboard /></PermissionRoute>} />
           <Route path="/billing" element={<PermissionRoute permission="billing"><Billing /></PermissionRoute>} />
           <Route path="/inventory" element={<PermissionRoute permission="inventory"><Inventory /></PermissionRoute>} />
+          <Route path="/inventory/website-filters" element={<PermissionRoute permission="inventory"><WebsiteFilters /></PermissionRoute>} />
           <Route path="/purchasing" element={<PermissionRoute permission="purchasing"><Purchasing /></PermissionRoute>} />
           <Route path="/purchasing/:id" element={<PermissionRoute permission="purchasing"><PurchaseOrderDetail /></PermissionRoute>} />
           <Route path="/orders" element={<PermissionRoute permission="orders"><Orders /></PermissionRoute>} />

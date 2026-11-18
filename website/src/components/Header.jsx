@@ -1,9 +1,12 @@
+import {usePanelMotion} from './StoreMotion';
 import { useState, useEffect } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate,useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ShoppingBag, Search, Menu, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import api from '../api/client';
+import {useContent} from '../context/ContentContext';
+import useDialogFocus from './useDialogFocus';
 
 const NAV_LINKS = [
   { to: '/', label: 'Home' },
@@ -15,10 +18,18 @@ const NAV_LINKS = [
 ];
 
 export default function Header() {
+  const panelMotion=usePanelMotion('top');
+  const {navigation}=useContent();
+  const navLinks=navigation?.items||NAV_LINKS;
   const { itemCount, setOpen } = useCart();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchDialog=useDialogFocus(searchOpen,()=>setSearchOpen(false));
+  const location=useLocation();
+  const [activeSection,setActiveSection]=useState('hero');
+  useEffect(()=>{const update=event=>setActiveSection(event.detail);window.addEventListener('littora-section',update);return()=>window.removeEventListener('littora-section',update);},[]);
+  const sectionActive=link=>location.pathname==='/'&&link.to.split('#')[1]===activeSection;
   const [logoUrl, setLogoUrl] = useState(null);
 
   useEffect(() => {
@@ -27,7 +38,28 @@ export default function Header() {
     }).catch(() => {});
   }, []);
   const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searchStatus, setSearchStatus] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setSuggestions([]);
+    setSearchStatus('');
+    if (!searchOpen || searchQuery.trim().length < 2) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearchStatus('Searching…');
+      try {
+        const response = await api.get('/products', { params: { search: searchQuery.trim(), limit: 5, view: 'card' }, signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setSuggestions(response.data.data.products);
+        setSearchStatus(response.data.data.total ? (response.data.data.suggested ? 'Similar products' : 'Matching products') : 'No matches. Try another word or browse Shop.');
+      } catch {
+        if (!controller.signal.aborted) setSearchStatus('Search unavailable. Please try again.');
+      }
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [searchQuery, searchOpen]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -73,8 +105,8 @@ export default function Header() {
           </Link>
 
           <nav className="hidden items-center gap-8 lg:flex">
-            {NAV_LINKS.map(l => (
-              <NavLink key={l.to} to={l.to} className={linkClass} end={l.to === '/'}>
+            {navLinks.map(l => (
+              <NavLink key={l.to} to={l.to} aria-current={l.to.includes('#')?(sectionActive(l)?'location':'false'):undefined} className={({isActive})=>linkClass({isActive:l.to.includes('#')?sectionActive(l):isActive})} end={l.to === '/'}>
                 {l.label}
               </NavLink>
             ))}
@@ -97,7 +129,7 @@ export default function Header() {
               <ShoppingBag className="h-5 w-5" />
               <AnimatePresence>
                 {itemCount > 0 && (
-                  <motion.span
+                  <motion.span key={itemCount}
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     exit={{ scale: 0 }}
@@ -123,14 +155,15 @@ export default function Header() {
         <AnimatePresence>
           {mobileOpen && (
             <motion.nav
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.2 }}
-              className="overflow-hidden border-t border-slate-100 bg-white lg:hidden"
+            {...panelMotion}
+              className="absolute inset-x-0 top-full max-h-[75vh] overflow-y-auto border-t border-slate-100 bg-white shadow-xl lg:hidden"
             >
               <div className="space-y-1 px-4 py-3">
-                {NAV_LINKS.map(l => (
+                {navLinks.map(l => (
                   <NavLink
                     key={l.to}
                     to={l.to}
@@ -167,13 +200,17 @@ export default function Header() {
               initial={{ y: -20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: -20, opacity: 0 }}
+              {...panelMotion}
+              ref={searchDialog} role="dialog" aria-modal="true" aria-label="Product search" tabIndex={-1}
               className="mx-4 w-full max-w-xl"
               onClick={e => e.stopPropagation()}
+              onKeyDown={e => { if (e.key === 'Escape') setSearchOpen(false); }}
             >
               <form onSubmit={handleSearch} className="relative">
                 <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
+                  aria-label="Search products"
                   autoFocus
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -181,6 +218,15 @@ export default function Header() {
                   className="w-full rounded-2xl border-0 bg-white py-4 pl-12 pr-4 text-lg shadow-2xl outline-none ring-2 ring-primary-200 placeholder:text-slate-400 focus:ring-primary-400"
                 />
               </form>
+              {searchStatus && <div className="mt-2 rounded-xl bg-white p-4 shadow-xl">
+                <p role="status" className="mb-2 text-sm text-slate-600">{searchStatus}</p>
+                <ul>{suggestions.map(product => <li key={product.id}>
+                  <Link to={`/product/${product.slug}`} onClick={() => setSearchOpen(false)} className="block rounded-lg p-3 text-slate-900 hover:bg-slate-100 focus-visible:outline-2">
+                    {product.name}
+                  </Link>
+                </li>)}</ul>
+                <Link to={`/shop?search=${encodeURIComponent(searchQuery.trim())}`} onClick={() => setSearchOpen(false)} className="mt-2 inline-block text-primary-700 underline">View all results</Link>
+              </div>}
             </motion.div>
           </motion.div>
         )}

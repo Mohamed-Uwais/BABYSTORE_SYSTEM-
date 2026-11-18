@@ -1,44 +1,16 @@
-import HeroImage from '../components/HeroImage';
+import DepthSurface from '../components/DepthSurface';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useInView, AnimatePresence } from 'framer-motion';
-import { ArrowRight, ChevronLeft, ChevronRight, ShieldCheck, Truck, BadgePercent, Star, Quote, Heart, Package, Clock, Award, Pause, Play } from 'lucide-react';
+import { motion, useInView, useReducedMotion, AnimatePresence } from 'framer-motion';
+import { ArrowRight, ChevronLeft, ChevronRight, ShieldCheck, Truck, BadgePercent, Star, Quote, Heart, Package, Clock, Award } from 'lucide-react';
 import api from '../api/client';
 import ProductCard from '../components/ProductCard';
 import SEO from '../components/SEO';
 import { useContent } from '../context/ContentContext';
+import HomeSections from '../components/HomeSections';
+import ManagedHero from '../components/ManagedHero';
 
 /* ═══ Utilities ═══ */
-
-function AnimatedCounter({ target, suffix = '', label, decimal = false }) {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: '-60px' });
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    if (!isInView) return;
-    const duration = 2000;
-    const steps = duration / 16;
-    let frame = 0;
-    const ease = (t) => 1 - Math.pow(1 - t, 3);
-    const timer = setInterval(() => {
-      frame++;
-      const progress = ease(frame / steps);
-      if (frame >= steps) { setCount(target); clearInterval(timer); }
-      else setCount(decimal ? Math.round(target * progress * 10) / 10 : Math.floor(target * progress));
-    }, 16);
-    return () => clearInterval(timer);
-  }, [isInView, target, decimal]);
-
-  return (
-    <div ref={ref} className="text-center">
-      <div className="font-mono text-2xl font-bold bg-gradient-to-r from-primary-500 to-teal-500 bg-clip-text text-transparent sm:text-4xl lg:text-5xl">
-        {decimal ? count.toFixed(1) : count.toLocaleString()}{suffix}
-      </div>
-      <p className="mt-2 text-sm text-slate-500 font-medium">{label}</p>
-    </div>
-  );
-}
 
 /* ═══ Floating Baby Decorations ═══ */
 function BabyDecorations() {
@@ -65,184 +37,6 @@ function BabyDecorations() {
   );
 }
 
-/* ═══ Hero Slides Data ═══ */
-const HERO_SLIDES = [
-  { headline: 'Keeping Babies Dry, Happy, and Comfortable', cta: 'Shop Now', ctaLink: '/shop', focus: 'center 25%' },
-  { headline: 'Gentle Protection, Pure Comfort', cta: 'Browse Products', ctaLink: '/shop', focus: 'center 30%' },
-  { headline: 'Wrap Your Baby in Comfort', cta: 'Shop Diapers', ctaLink: '/shop?category=Diapers', focus: 'center 20%' },
-  { headline: 'Soft on Skin, Tough on Mess', cta: 'Shop Wipes', ctaLink: '/shop?category=Wipes', focus: 'center 35%' },
-  { headline: 'Trusted by 500+ Sri Lankan Parents', cta: 'Order via WhatsApp 💬', ctaLink: null, focus: 'center 30%' },
-  { headline: 'Premium Brands, Best Prices, Delivered', cta: 'Free Delivery Over Rs. 5,000 🚚', ctaLink: '/shop', focus: 'center center' },
-];
-
-/* ═══ Hero Slider ═══ */
-function HeroSlider({ whatsapp }) {
-  const [current, setCurrent] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const timerRef = useRef(null);
-  const total = HERO_SLIDES.length;
-
-  const resetTimer = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (!paused) {
-      timerRef.current = setInterval(() => setCurrent(c => (c + 1) % total), 5000);
-    }
-  }, [paused, total]);
-
-  useEffect(() => {
-    resetTimer();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [resetTimer]);
-
-  const goTo = (idx) => { setCurrent(idx); resetTimer(); };
-  const prev = () => goTo((current - 1 + total) % total);
-  const next = () => goTo((current + 1) % total);
-
-  const slide = HERO_SLIDES[current];
-  const whatsappHref = `https://wa.me/${whatsapp || '94771234567'}?text=Hi!%20I'd%20like%20to%20order`;
-
-  return (
-    <section className="relative h-[100dvh] min-h-[600px] w-full overflow-hidden -mt-[108px]">
-      {/* Background slides with Ken Burns */}
-      <AnimatePresence mode="sync" initial={false}>
-        <motion.div
-          key={current}
-          initial={{ opacity: 0, scale: 1.1 }}
-          animate={{ opacity: 1, scale: 1.2 }}
-          exit={{ opacity: 0 }}
-          transition={{
-            opacity: { duration: 1.2, ease: 'easeInOut' },
-            scale: { duration: 12, ease: 'linear' },
-          }}
-          className="absolute inset-0"
-        >
-          <HeroImage fetchPriority={current === 0 ? "high" : "auto"} src={`/images/hero/slide-${current + 1}.jpg`} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: slide.focus }} />
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Soft mint/sage overlay for text readability */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[#0a2e1f]/60 via-[#0a2e1f]/35 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0a2e1f]/50 via-transparent to-[#0a2e1f]/20" />
-
-      {/* Content */}
-      <div className="relative z-10 flex h-full items-center">
-        <div className="mx-auto w-full max-w-7xl px-6 lg:px-8">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={current}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-              className="max-w-2xl"
-            >
-              <h1 className="text-4xl font-bold leading-[1.1] tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl xl:text-7xl">
-                {slide.headline}
-              </h1>
-              <div className="mt-8 flex flex-wrap gap-4">
-                {slide.ctaLink ? (
-                  <Link
-                    to={slide.ctaLink}
-                    className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-white px-8 py-4 text-base font-semibold text-slate-900 shadow-2xl transition-all hover:shadow-white/30 active:scale-[0.97]"
-                  >
-                    <span className="relative z-10 flex items-center gap-2">
-                      {slide.cta} <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-                    </span>
-                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-primary-100/0 via-primary-100 to-primary-100/0 transition-transform duration-500 group-hover:translate-x-full" />
-                  </Link>
-                ) : (
-                  <a
-                    href={whatsappHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group inline-flex items-center gap-2 rounded-full bg-[#25D366] px-8 py-4 text-base font-semibold text-white shadow-2xl shadow-[#25D366]/30 transition-all hover:bg-[#20bd5a] active:scale-[0.97]"
-                  >
-                    {slide.cta} <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-                  </a>
-                )}
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* Navigation arrows */}
-      <button
-        onClick={prev}
-        className="absolute left-4 top-1/2 z-20 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/25 sm:left-6"
-        aria-label="Previous slide"
-      >
-        <ChevronLeft className="h-6 w-6" />
-      </button>
-      <button
-        onClick={next}
-        className="absolute right-4 top-1/2 z-20 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/25 sm:right-6"
-        aria-label="Next slide"
-      >
-        <ChevronRight className="h-6 w-6" />
-      </button>
-
-      {/* Bottom controls: dots + pause */}
-      <div className="absolute bottom-8 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3">
-        <div className="flex items-center gap-2">
-          {HERO_SLIDES.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i)}
-              aria-label={`Go to slide ${i + 1}`}
-              className="group relative h-2.5 overflow-hidden rounded-full transition-all duration-500"
-              style={{ width: i === current ? 32 : 10 }}
-            >
-              <div className="absolute inset-0 rounded-full bg-white/30" />
-              {i === current && (
-                <motion.div
-                  initial={{ scaleX: 0 }}
-                  animate={{ scaleX: 1 }}
-                  transition={{ duration: paused ? 99999 : 5, ease: 'linear' }}
-                  className="absolute inset-0 origin-left rounded-full bg-white"
-                />
-              )}
-              {i !== current && (
-                <div className="absolute inset-0 rounded-full transition-colors group-hover:bg-white/60" />
-              )}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => setPaused(p => !p)}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/25"
-          aria-label={paused ? 'Play slideshow' : 'Pause slideshow'}
-        >
-          {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-        </button>
-      </div>
-
-      {/* Scroll indicator */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2 }}
-        className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 sm:bottom-20"
-      >
-        <motion.div
-          animate={{ y: [0, 8, 0] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-          className="flex flex-col items-center gap-2 text-white/50"
-        >
-          <span className="text-[10px] font-medium tracking-[0.2em] uppercase">Scroll</span>
-          <div className="h-8 w-5 rounded-full border-2 border-white/30 p-0.5">
-            <motion.div
-              animate={{ y: [0, 12, 0] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              className="h-1.5 w-1.5 rounded-full bg-white/60"
-            />
-          </div>
-        </motion.div>
-      </motion.div>
-    </section>
-  );
-}
-
 /* ═══ Promo Carousel ═══ */
 const GRADIENT_MAP = {
   orange: 'from-orange-500 via-red-500 to-pink-500',
@@ -254,17 +48,19 @@ const GRADIENT_MAP = {
 };
 
 function PromoCarousel({ banners, productImages = [] }) {
+  const reduced=useReducedMotion(),{appearance}=useContent();
+  const [paused,setPaused]=useState(false);
   const [current, setCurrent] = useState(0);
 
   useEffect(() => {
-    if (banners.length <= 1) return;
+    if (banners.length <= 1||paused||reduced||appearance?.motion==='none') return;
     const timer = setInterval(() => setCurrent(c => (c + 1) % banners.length), 5000);
     return () => clearInterval(timer);
-  }, [banners.length]);
+  }, [banners.length,paused,reduced,appearance?.motion]);
 
   if (!banners.length) return null;
 
-  const slide = banners[current];
+  const slide = banners[current % banners.length];
   const gradient = GRADIENT_MAP[slide.color] || GRADIENT_MAP.orange;
   const bgImage = slide.bg_image || productImages[current % Math.max(productImages.length, 1)];
   const hasBgImage = !!bgImage;
@@ -313,10 +109,12 @@ function PromoCarousel({ banners, productImages = [] }) {
             </motion.div>
           </AnimatePresence>
 
+          {banners.length>1&&<button type="button" className="absolute right-3 top-3 z-20 rounded-lg bg-slate-900/80 px-3 py-2 text-sm text-white" onClick={()=>setPaused(value=>!value)}>{paused?'Resume offers':'Pause offers'}</button>}
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-20">
             {banners.map((_, i) => (
               <button
                 key={i}
+                aria-label={`Show offer ${i+1}`}
                 onClick={() => setCurrent(i)}
                 className={`h-2 rounded-full transition-all duration-300 ${i === current ? 'w-6 bg-white' : 'w-2 bg-white/40'}`}
               />
@@ -342,16 +140,20 @@ const STAT_COLORS = ['text-rose-500', 'text-primary-500', 'text-emerald-500', 't
 function WhyLittora({ statsItems, story }) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: '-100px' });
+  const systemReduced = useReducedMotion();
+  const { appearance } = useContent();
+  const reduced = systemReduced || appearance?.motion === 'none';
+  const visible = reduced || isInView;
 
   return (
     <section ref={ref} className="relative py-20 lg:py-28 overflow-hidden">
-      <BabyDecorations />
+      {!reduced && <BabyDecorations />}
       <div className="mx-auto max-w-7xl px-4 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-20 items-center">
           <motion.div
-            initial={{ opacity: 0, x: -40 }}
-            animate={isInView ? { opacity: 1, x: 0 } : {}}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduced ? false : { opacity: 0, x: -40 }}
+            animate={visible ? { opacity: 1, x: 0 } : {}}
+            transition={reduced ? { duration: 0 } : { duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="relative"
           >
             <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary-50 via-teal-50 to-sky-50" />
@@ -362,9 +164,9 @@ function WhyLittora({ statsItems, story }) {
                 return (
                   <motion.div
                     key={stat.label}
-                    initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                    animate={isInView ? { opacity: 1, y: 0, scale: 1 } : {}}
-                    transition={{ delay: 0.2 + i * 0.1, type: 'spring', stiffness: 100 }}
+                    initial={reduced ? false : { opacity: 0, y: 20, scale: 0.9 }}
+                    animate={visible ? { opacity: 1, y: 0, scale: 1 } : {}}
+                    transition={reduced ? { duration: 0 } : { delay: 0.2 + i * 0.1, type: 'spring', stiffness: 100 }}
                     className="rounded-2xl bg-white/80 p-5 shadow-sm backdrop-blur-sm border border-white/60"
                   >
                     <Icon className={`h-7 w-7 ${STAT_COLORS[i % STAT_COLORS.length]} mb-3`} />
@@ -377,9 +179,9 @@ function WhyLittora({ statsItems, story }) {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, x: 40 }}
-            animate={isInView ? { opacity: 1, x: 0 } : {}}
-            transition={{ duration: 0.7, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduced ? false : { opacity: 0, x: 40 }}
+            animate={visible ? { opacity: 1, x: 0 } : {}}
+            transition={reduced ? { duration: 0 } : { duration: 0.7, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
             <div className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-4 py-1.5 text-xs font-semibold text-primary-600 uppercase tracking-wider mb-4">
               <ShieldCheck className="h-3.5 w-3.5" /> Our Story
@@ -425,14 +227,16 @@ function WhyLittora({ statsItems, story }) {
 
 export default function Home() {
   const content = useContent();
+  const reduced=useReducedMotion();
+  const sectionText=(key,field,fallback)=>content.homepage?.sections?.find(item=>item.key===key)?.[field]||fallback;
   const [bestSellers, setBestSellers] = useState([]);
   const [newArrivals, setNewArrivals] = useState([]);
   const [blogPosts, setBlogPosts] = useState([]);
   const [bannerImages, setBannerImages] = useState([]);
   const carouselRef = useRef(null);
 
-  const promoBanners = content.promo_banners?.banners || [];
-  const categories = content.categories?.items || [];
+  const promoBanners = (content.promo_banners?.banners || []).filter(item=>item.enabled!==false);
+  const categories = (content.categories?.items || []).filter(item=>item.enabled!==false);
   const statsItems = content.stats?.items || [];
   const story = content.brand_story;
   const testimonials = content.testimonials?.items || [];
@@ -440,7 +244,7 @@ export default function Home() {
   const footer = content.footer;
 
   useEffect(() => {
-    api.get('/best-sellers').then(r => setBestSellers(r.data.data)).catch(() => {});
+    api.get('/featured').then(r => setBestSellers(r.data.data)).catch(() => {});
     api.get('/new-arrivals?limit=8').then(r => setNewArrivals(r.data.data)).catch(() => {});
     api.get('/blog?limit=3').then(r => setBlogPosts(r.data.data.posts)).catch(() => {});
     api.get('/banner-images').then(r => setBannerImages(r.data.data || [])).catch(() => {});
@@ -449,8 +253,8 @@ export default function Home() {
   const scrollCarousel = useCallback((dir) => {
     const el = carouselRef.current;
     if (!el) return;
-    el.scrollBy({ left: dir * 300, behavior: 'smooth' });
-  }, []);
+    el.scrollBy({ left: dir * 300, behavior: reduced||content.appearance?.motion==='none'?'auto':'smooth' });
+  }, [reduced,content.appearance?.motion]);
 
   const blogPlaceholder = 'data:image/svg+xml,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect fill="#f0f9ff" width="600" height="400"/><text x="300" y="200" text-anchor="middle" font-family="system-ui" font-size="18" fill="#bae6fd">Blog Cover</text></svg>'
@@ -461,7 +265,8 @@ export default function Home() {
       <SEO path="/" description="Premium baby diapers and wipes delivered across Sri Lanka" />
 
       {/* ═══════════════════ HERO SLIDER ═══════════════════ */}
-      <HeroSlider whatsapp={footer?.whatsapp} />
+      <HomeSections>
+      <ManagedHero />
 
       {/* ═══════════════════ PROMO CAROUSEL ═══════════════════ */}
       <PromoCarousel banners={promoBanners} productImages={bannerImages} />
@@ -476,7 +281,7 @@ export default function Home() {
               viewport={{ once: true }}
               className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
             >
-              What We Sell
+              {sectionText('categories','title','What We Sell')}
             </motion.h2>
             <div className="mx-auto mt-3 h-1 w-12 rounded-full bg-gradient-to-r from-primary-400 to-teal-400" />
           </div>
@@ -492,9 +297,10 @@ export default function Home() {
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1, type: 'spring', stiffness: 80, damping: 20 }}
                 >
+                  <DepthSurface className={`category-depth category-tone-${/toy/i.test(cat.name)?'play':/flower|décor|decor|home/i.test(cat.name)?'botanical':'care'}`}>
                   <Link
-                    to={`/shop?category=${encodeURIComponent(cat.name)}`}
-                    className="group relative block min-h-[300px] overflow-hidden rounded-3xl transition-transform duration-300 hover:scale-[1.03]"
+                    to={`/shop?category=${encodeURIComponent(cat.category||cat.name)}`}
+                    className="category-face group relative block min-h-[300px] overflow-hidden rounded-3xl transition-shadow duration-300"
                   >
                     {cat.image ? (
                       <img
@@ -515,6 +321,7 @@ export default function Home() {
                       </div>
                     </div>
                   </Link>
+                  </DepthSurface>
                 </motion.div>
               );
             })}
@@ -535,7 +342,7 @@ export default function Home() {
                   viewport={{ once: true }}
                   className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
                 >
-                  🔥 Best Sellers This Week
+                  {sectionText('featured','title','Featured finds')}
                 </motion.h2>
                 <motion.p
                   initial={{ opacity: 0, y: 15 }}
@@ -544,14 +351,14 @@ export default function Home() {
                   transition={{ delay: 0.05 }}
                   className="mt-2 text-slate-500"
                 >
-                  Most popular with parents right now
+                  {sectionText('featured','subtitle','Explore our selected collection')}
                 </motion.p>
               </div>
               <div className="hidden items-center gap-2 sm:flex">
-                <button onClick={() => scrollCarousel(-1)} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
+                <button aria-label="Previous featured products" onClick={() => scrollCarousel(-1)} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
                   <ChevronLeft className="h-5 w-5" />
                 </button>
-                <button onClick={() => scrollCarousel(1)} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
+                <button aria-label="Next featured products" onClick={() => scrollCarousel(1)} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
                   <ChevronRight className="h-5 w-5" />
                 </button>
               </div>
@@ -595,10 +402,10 @@ export default function Home() {
                 <Star className="h-3.5 w-3.5 fill-amber-400" /> Trusted by Parents
               </div>
               <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                What Parents Say
+                {sectionText('testimonials','title','What Parents Say')}
               </h2>
               <p className="mx-auto mt-3 max-w-md text-slate-500">
-                Real feedback from real Sri Lankan parents
+                {sectionText('testimonials','subtitle','Customer feedback')}
               </p>
             </motion.div>
           </div>
@@ -684,14 +491,14 @@ export default function Home() {
                     Browse Products <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </span>
                 </Link>
-                <a
-                  href={`https://wa.me/${footer?.whatsapp || '94771234567'}?text=Hi%20Littora!%20I'd%20like%20to%20order`}
+                {footer?.whatsapp && (<a
+                  href={`https://wa.me/${footer.whatsapp}?text=Hi%20Littora!%20I'd%20like%20to%20order`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full border-2 border-white/30 px-7 py-3.5 text-sm font-semibold text-white transition-all hover:border-white/60 hover:bg-white/10"
                 >
                   Order via WhatsApp 💬
-                </a>
+                </a>)}
               </div>
             </div>
           </motion.div>
@@ -710,7 +517,7 @@ export default function Home() {
                   viewport={{ once: true }}
                   className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
                 >
-                  Just Arrived
+                  {sectionText('new_arrivals','title','Just Arrived')}
                 </motion.h2>
                 <motion.p
                   initial={{ opacity: 0, x: -20 }}
@@ -719,7 +526,7 @@ export default function Home() {
                   transition={{ delay: 0.05 }}
                   className="mt-2 text-slate-500"
                 >
-                  Fresh stock just added
+                  {sectionText('new_arrivals','subtitle','Fresh stock just added')}
                 </motion.p>
               </div>
               <Link to="/shop?sort=newest" className="hidden items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 sm:inline-flex">
@@ -746,7 +553,7 @@ export default function Home() {
                 viewport={{ once: true }}
                 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
               >
-                Tips & Guides
+                {sectionText('blog','title','Tips & Guides')}
               </motion.h2>
               <motion.p
                 initial={{ opacity: 0, y: 15 }}
@@ -755,7 +562,7 @@ export default function Home() {
                 transition={{ delay: 0.05 }}
                 className="mx-auto mt-3 max-w-lg text-slate-500"
               >
-                Helpful advice on choosing the right products for your baby
+                {sectionText('blog','subtitle','Helpful advice on choosing the right products for your baby')}
               </motion.p>
             </div>
             <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -832,19 +639,20 @@ export default function Home() {
                 </span>
                 <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-white/0 via-white/20 to-white/0 transition-transform duration-700 group-hover:translate-x-full" />
               </Link>
-              <a
-                href={`https://wa.me/${footer?.whatsapp || '94771234567'}?text=Hi%20Littora!%20I'd%20like%20to%20order`}
+              {footer?.whatsapp && (<a
+                href={`https://wa.me/${footer.whatsapp}?text=Hi%20Littora!%20I'd%20like%20to%20order`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-full border-2 border-emerald-500/30 bg-emerald-500/10 px-8 py-4 text-base font-semibold text-emerald-400 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                 Order via WhatsApp
-              </a>
+              </a>)}
             </div>
           </motion.div>
         </div>
       </section>
+      </HomeSections>
     </motion.div>
   );
 }

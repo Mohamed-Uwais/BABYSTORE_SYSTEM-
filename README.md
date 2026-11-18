@@ -1,5 +1,15 @@
 # LITTORA POS
 
+## Isolated local development
+
+Local test setup and start commands: [Localhost testing](docs/phase-1/LOCALHOST-TESTING.md).
+Staging isolation and credential handling: [Staging](docs/phase-1/STAGING.md).
+Content draft API maintenance notes: [Website Studio](docs/phase-1/WEBSITE-STUDIO.md).
+
+Prototypes, proposals, schedules and owner-review material are stored separately at
+`C:\Users\User\LITTORA-Project-Reference\phase-1`. They are not application build/runtime dependencies.
+The application project retains source code, tests, migrations, deployment files and technical maintenance documentation.
+
 A full-featured Point of Sale system built for baby product retail stores. Designed as a production-ready application with modern UI, dark mode support, and comprehensive business management features.
 
 ![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)

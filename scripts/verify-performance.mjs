@@ -24,7 +24,7 @@ for (const pathname of ['/', '/shop', '/shop/', '/about', '/blog', '/contact', '
   vm.runInNewContext(script, { location: { pathname }, document: {
     createElement: () => ({}), head: { appendChild: link => links.push(link) },
   } });
-  const expected = !pathname.startsWith('/checkout') && !pathname.startsWith('/product/');
+  const expected = ['/shop','/shop/','/about','/blog','/contact','/track'].includes(pathname);
   assert.equal(links.length, expected ? 1 : 0, pathname);
   if (expected) {
     assert.equal(links[0].type, 'image/avif');
@@ -32,7 +32,13 @@ for (const pathname of ['/', '/shop', '/shop/', '/about', '/blog', '/contact', '
     for (const entry of links[0].imageSrcset.split(', ')) assert(statSync(`website/public${entry.split(' ')[0]}`).isFile());
   }
 }
-const builds = JSON.parse(readFileSync('scripts/phase2-after.json', 'utf8'));
-assert(builds.frontend.initialJsBytes < 500000, 'POS initial JS exceeds 500 KB budget');
-assert(builds.website.initialJsBytes < 500000, 'Website initial JS exceeds 500 KB budget');
+for(const app of ['frontend','website']){
+  const manifest=JSON.parse(readFileSync(`${app}/dist/.vite/manifest.json`,'utf8'));
+  const visited=new Set(),files=new Set();
+  function visit(key){if(visited.has(key))return;visited.add(key);const chunk=manifest[key];assert(chunk,`Missing ${key}`);files.add(chunk.file);for(const imported of chunk.imports||[])visit(imported);}
+  for(const [key,chunk] of Object.entries(manifest))if(chunk.isEntry)visit(key);
+  const initialJsBytes=[...files].filter(file=>file.endsWith('.js')).reduce((total,file)=>total+statSync(`${app}/dist/${file}`).size,0);
+  assert(initialJsBytes<500000,`${app} initial JS exceeds 500 KB budget`);
+  console.log(`${app}: current build initial JS ${initialJsBytes} bytes (static imports included; not browser timing)`);
+}
 console.log('Responsive assets, route preloads, and initial JS budgets passed.');

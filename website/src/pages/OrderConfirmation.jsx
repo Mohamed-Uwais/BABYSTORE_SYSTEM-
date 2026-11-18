@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion,useReducedMotion } from 'framer-motion';
+import {useContent} from '../context/ContentContext';
+import SEO from '../components/SEO';
 import { CheckCircle2, Package, Phone } from 'lucide-react';
 
 function Confetti() {
@@ -59,6 +61,8 @@ function Confetti() {
 
 export default function OrderConfirmation() {
   const { orderNumber } = useParams();
+  const reduced=useReducedMotion();
+  const motionEnabled=useContent().appearance?.motion!=='none'&&!reduced;
   const [showConfetti, setShowConfetti] = useState(true);
 
   useEffect(() => {
@@ -68,7 +72,8 @@ export default function OrderConfirmation() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      {showConfetti && <Confetti />}
+      <SEO title="Order received" path={`/order-confirmation/${orderNumber}`}/>
+      {showConfetti && motionEnabled && <Confetti />}
 
       <div className="mx-auto max-w-2xl px-4 py-16 text-center lg:py-24">
         <motion.div
@@ -110,15 +115,15 @@ export default function OrderConfirmation() {
           transition={{ delay: 0.4 }}
           className="mx-auto mt-8 max-w-sm rounded-3xl border border-slate-100/80 bg-white p-8 shadow-card"
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Order Number</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Order Number</p>
           <p className="mt-1 font-mono text-2xl font-bold text-primary-600">{orderNumber}</p>
           <div className="mt-5 space-y-3 text-sm text-slate-600">
             <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-slate-400" />
+              <Package className="h-4 w-4 text-slate-500" />
               <span>You'll receive a WhatsApp update when your order ships</span>
             </div>
             <div className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-slate-400" />
+              <Phone className="h-4 w-4 text-slate-500" />
               <span>Questions? Chat with us anytime</span>
             </div>
           </div>

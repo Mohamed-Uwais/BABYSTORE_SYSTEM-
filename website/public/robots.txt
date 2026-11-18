@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /checkout
+Disallow: /order-confirmation/
+Disallow: /track
+Disallow: /*?preview=
+Sitemap: https://littora.lk/api/public/sitemap.xml

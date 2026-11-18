@@ -1,5 +1,7 @@
+import {usePanelMotion} from './StoreMotion';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import useDialogFocus from './useDialogFocus';
 import { ChevronLeft, ChevronRight, X, ZoomIn } from 'lucide-react';
 
 const placeholder = 'data:image/svg+xml,' + encodeURIComponent(
@@ -8,12 +10,14 @@ const placeholder = 'data:image/svg+xml,' + encodeURIComponent(
 
 function ImageZoom({ src, alt }) {
   const containerRef = useRef(null);
+  const bounds=useRef(null);
   const [zoomed, setZoomed] = useState(false);
   const [pos, setPos] = useState({ x: 50, y: 50 });
 
   const handleMove = (e) => {
     if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
+    const rect = bounds.current;
+    if(!rect)return;
     setPos({
       x: ((e.clientX - rect.left) / rect.width) * 100,
       y: ((e.clientY - rect.top) / rect.height) * 100,
@@ -24,13 +28,14 @@ function ImageZoom({ src, alt }) {
     <div
       ref={containerRef}
       className="relative aspect-square overflow-hidden rounded-3xl border border-slate-100/80 bg-white shadow-card cursor-zoom-in"
-      onMouseEnter={() => setZoomed(true)}
+      onMouseEnter={event => {bounds.current=event.currentTarget.getBoundingClientRect();setZoomed(true);}}
       onMouseLeave={() => setZoomed(false)}
       onMouseMove={handleMove}
     >
       <img
         src={src || placeholder}
         alt={alt}
+        width="800" height="800" fetchPriority="high" decoding="async"
         className="h-full w-full object-cover transition-transform duration-300"
         style={zoomed ? { transform: 'scale(1.8)', transformOrigin: `${pos.x}% ${pos.y}%` } : {}}
       />
@@ -39,6 +44,8 @@ function ImageZoom({ src, alt }) {
 }
 
 function Lightbox({ images, currentIndex, onClose, onNavigate }) {
+  const panelMotion=usePanelMotion('center');
+  const dialogRef=useDialogFocus(true,onClose);
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') onClose();
@@ -54,22 +61,26 @@ function Lightbox({ images, currentIndex, onClose, onNavigate }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+            {...panelMotion}
+      ref={dialogRef} role="dialog" aria-modal="true" aria-label="Product images" tabIndex={-1}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm"
       onClick={onClose}
     >
-      <button onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-2 text-white/80 transition hover:bg-white/20 hover:text-white">
+      <button aria-label="Close image viewer" onClick={onClose} className="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-2 text-white/80 transition hover:bg-white/20 hover:text-white">
         <X className="h-6 w-6" />
       </button>
 
       {images.length > 1 && (
         <>
           <button
+            aria-label="Previous image"
             onClick={(e) => { e.stopPropagation(); onNavigate(-1); }}
             className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/10 p-3 text-white/80 transition hover:bg-white/20"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
           <button
+            aria-label="Next image"
             onClick={(e) => { e.stopPropagation(); onNavigate(1); }}
             className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/10 p-3 text-white/80 transition hover:bg-white/20"
           >
@@ -93,6 +104,7 @@ function Lightbox({ images, currentIndex, onClose, onNavigate }) {
           {images.map((_, i) => (
             <button
               key={i}
+              aria-label={`Show image ${i+1}`}
               onClick={(e) => { e.stopPropagation(); onNavigate(i - currentIndex); }}
               className={`h-2 w-2 rounded-full transition ${i === currentIndex ? 'bg-white scale-125' : 'bg-white/40 hover:bg-white/60'}`}
             />
@@ -118,7 +130,7 @@ export default function ImageGallery({ images, variantImageUrl, productName, has
       const variantIdx = images.findIndex(img => img.variant_id && img.image_url === variantImageUrl);
       if (variantIdx >= 0) setActiveIndex(variantIdx);
     }
-  }, [variantImageUrl]);
+  }, [variantImageUrl,images]);
 
   const navigateLightbox = useCallback((delta) => {
     setActiveIndex(prev => {
@@ -133,7 +145,7 @@ export default function ImageGallery({ images, variantImageUrl, productName, has
     <div className="relative">
       <div className="relative cursor-pointer" onClick={() => setLightboxOpen(true)}>
         <ImageZoom src={allImages[activeIndex]?.image_url || placeholder} alt={productName} />
-        <button className="absolute bottom-4 right-4 rounded-full bg-white/80 p-2 text-slate-600 shadow-md backdrop-blur-sm transition hover:bg-white hover:text-slate-900">
+        <button aria-label="Enlarge product image" className="absolute bottom-4 right-4 rounded-full bg-white/80 p-2 text-slate-600 shadow-md backdrop-blur-sm transition hover:bg-white hover:text-slate-900">
           <ZoomIn className="h-5 w-5" />
         </button>
       </div>
@@ -149,6 +161,7 @@ export default function ImageGallery({ images, variantImageUrl, productName, has
           {allImages.map((img, i) => (
             <button
               key={i}
+              aria-label={`Select image ${i+1}`}
               onClick={() => setActiveIndex(i)}
               className={`h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border-2 transition ${
                 i === activeIndex
@@ -156,7 +169,7 @@ export default function ImageGallery({ images, variantImageUrl, productName, has
                   : 'border-slate-200 opacity-70 hover:opacity-100 hover:border-slate-300'
               }`}
             >
-              <img src={img.image_url} alt="" className="h-full w-full object-cover" />
+              <img src={img.image_url} alt="" width="64" height="64" loading="lazy" className="h-full w-full object-cover" />
             </button>
           ))}
         </div>

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence,useReducedMotion } from 'framer-motion';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../api/client';
+import {useContent} from '../context/ContentContext';
 
 export default function PromoBanner() {
+  const reduced=useReducedMotion(),{appearance}=useContent();
+  const [paused,setPaused]=useState(false);
   const [banners, setBanners] = useState([]);
   const [current, setCurrent] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -20,12 +23,12 @@ export default function PromoBanner() {
   }, []);
 
   useEffect(() => {
-    if (banners.length <= 1) return;
+    if (banners.length <= 1||reduced||paused||appearance?.motion==='none') return;
     const interval = setInterval(() => {
       setCurrent(c => (c + 1) % banners.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, [banners.length]);
+  }, [banners.length,reduced,paused,appearance?.motion]);
 
   if (dismissed || banners.length === 0) return null;
 
@@ -49,7 +52,7 @@ export default function PromoBanner() {
         >
           <div className="mx-auto flex max-w-7xl items-center justify-center gap-3 px-4 py-2.5">
             {banners.length > 1 && (
-              <button onClick={() => setCurrent(c => (c - 1 + banners.length) % banners.length)}
+              <button aria-label="Previous offer" onClick={() => setCurrent(c => (c - 1 + banners.length) % banners.length)}
                 className="rounded-full p-0.5 text-white/60 transition hover:text-white">
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -65,13 +68,14 @@ export default function PromoBanner() {
             </Link>
 
             {banners.length > 1 && (
-              <button onClick={() => setCurrent(c => (c + 1) % banners.length)}
+              <button aria-label="Next offer" onClick={() => setCurrent(c => (c + 1) % banners.length)}
                 className="rounded-full p-0.5 text-white/60 transition hover:text-white">
                 <ChevronRight className="h-4 w-4" />
               </button>
             )}
 
-            <button onClick={handleDismiss}
+            {banners.length>1&&<button type="button" onClick={()=>setPaused(value=>!value)} className="rounded bg-slate-900/60 px-2 py-1 text-xs text-white">{paused?'Resume':'Pause'}</button>}
+            <button aria-label="Dismiss offers" onClick={handleDismiss}
               className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-white/60 transition hover:text-white">
               <X className="h-4 w-4" />
             </button>

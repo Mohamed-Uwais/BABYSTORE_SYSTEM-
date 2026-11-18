@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { MapPin, Phone, Mail, MessageCircle, Send, CheckCircle2, Loader2 } from 'lucide-react';
+import SocialIcon from '../components/SocialIcon';
 import api from '../api/client';
 import PageHero from '../components/PageHero';
 import SEO from '../components/SEO';
 import { useContent } from '../context/ContentContext';
+import { normalizeMobilePhone, MOBILE_PHONE_HELP } from '../../../shared/mobilePhone.mjs';
 
 export default function Contact() {
   const { footer } = useContent();
@@ -18,12 +20,16 @@ export default function Contact() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.message.trim()) return;
+    if (form.phone.trim() && !normalizeMobilePhone(form.phone)) {
+      setError(MOBILE_PHONE_HELP);
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
       await api.post('/contact', {
         name: form.name.trim(),
-        phone: form.phone.trim() || undefined,
+        phone: normalizeMobilePhone(form.phone) || undefined,
         email: form.email.trim() || undefined,
         message: form.message.trim(),
       });
@@ -46,6 +52,13 @@ export default function Contact() {
           {/* Contact info */}
           <div className="lg:col-span-2">
             <h2 className="text-lg font-bold text-slate-900">Contact Information</h2>
+            <div className="mt-4 flex gap-4">
+              {['instagram','youtube','tiktok','facebook'].map(name=>{
+                let url;try{url=new URL(footer[name]);}catch{return null;}
+                if(url.protocol!=='https:')return null;
+                return <a key={name} href={url.href} target="_blank" rel="noopener noreferrer" aria-label={`LITTORA on ${name}`} className="rounded-lg border border-slate-300 p-3 text-primary-700 focus-visible:outline-2"><SocialIcon name={name}/></a>;
+              })}
+            </div>
             <p className="mt-2 text-sm text-slate-500">Feel free to reach out through any of these channels</p>
 
             <div className="mt-8 space-y-6">
@@ -66,14 +79,14 @@ export default function Contact() {
               ))}
             </div>
 
-            <a
-              href={`https://wa.me/${footer.whatsapp || '94771234567'}?text=Hi!%20I%20have%20a%20question`}
+            {footer?.whatsapp && (<a
+              href={`https://wa.me/${footer.whatsapp}?text=Hi!%20I%20have%20a%20question`}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-8 flex items-center gap-2 rounded-2xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-emerald-600"
             >
               <MessageCircle className="h-5 w-5" /> Chat on WhatsApp
-            </a>
+            </a>)}
           </div>
 
           {/* Contact form */}

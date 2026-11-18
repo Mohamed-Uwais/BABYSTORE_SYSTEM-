@@ -1,18 +1,27 @@
 import { Helmet } from 'react-helmet-async';
+import {useContent} from '../context/ContentContext';
 
 const SITE_NAME = 'LITTORA';
-const BASE_URL = 'https://littoradiapers.com';
+const BASE_URL = 'https://littora.lk';
 
-export default function SEO({ title, description, path = '', type = 'website', image }) {
-  const fullTitle = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME} — Diapers & Wet Wipes, Sri Lanka`;
-  const desc = description || 'Sri Lanka\'s best place to buy diapers and wet wipes. Better prices, faster delivery, always in stock. Genuine brands delivered island-wide.';
+export default function SEO({ title, description, path = '', type = 'website', image, noIndex=false }) {
+  const pages=useContent().pages;
+  const key=path.startsWith('/policies/')?path.split('/')[2]:path.slice(1);
+  const managed=pages?.[key];
+  title=managed?.title||title;description=managed?.meta_description||description;
+  const fullTitle = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME} — Baby Care, Toys & Home Décor`;
+  const desc = description || 'Shop baby care, toys, flowers and home décor from LITTORA in Sri Lanka. Explore current products, prices and availability.';
   const url = `${BASE_URL}${path}`;
-  const ogImage = image || `${BASE_URL}/og-default.png`;
+  const ogImage = new URL(image || '/favicon.png',BASE_URL).href;
+  const privatePage=/^\/(checkout|track|order-confirmation)(\/|$)/.test(path);
+  const preview=new URLSearchParams(window.location.search).has('preview');
+  const local=['localhost','127.0.0.1','[::1]'].includes(window.location.hostname);
 
   return (
     <Helmet>
       <title>{fullTitle}</title>
       <meta name="description" content={desc} />
+      <meta name="robots" content={noIndex||privatePage||preview||local?'noindex, nofollow':'index, follow'} />
       <link rel="canonical" href={url} />
 
       <meta property="og:title" content={fullTitle} />

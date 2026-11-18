@@ -17,8 +17,9 @@ async function adjustStock({ variant_id, change_qty, created_by }) {
     if (!variant) throw new Error(`Variant ${variant_id} not found`);
 
     const newStock = variant.current_stock + qty;
-    if (newStock < 0) {
-      throw new Error(`Adjustment would take stock below zero (have ${variant.current_stock}, change ${qty})`);
+    const reserved=await require('../services/stockReservations').reserved(connection,variant_id);
+    if (newStock < reserved) {
+      throw new Error(`Adjustment would leave fewer units than the ${reserved} units reserved for website orders. Review those orders first.`);
     }
 
     await connection.query(
@@ -67,6 +68,8 @@ async function stockToggle({ variant_id, new_stock, created_by }) {
     if (!variant) throw new Error(`Variant ${variant_id} not found`);
 
     const change = new_stock - variant.current_stock;
+    const reserved=await require('../services/stockReservations').reserved(connection,variant_id);
+    if(!Number.isSafeInteger(Number(new_stock))||Number(new_stock)<reserved)throw new Error(`Stock must be at least the ${reserved} reserved units`);
     if (change === 0) {
       await connection.commit();
       return { variant_id, change_qty: 0, new_stock: variant.current_stock };

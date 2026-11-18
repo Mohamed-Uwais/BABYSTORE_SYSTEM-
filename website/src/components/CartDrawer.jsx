@@ -1,31 +1,38 @@
+import {usePanelMotion} from './StoreMotion';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import api from '../api/client';
+import useDialogFocus from './useDialogFocus';
 
 function money(n) {
-  return `Rs. ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `Rs. ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 export default function CartDrawer() {
-  const { items, open, setOpen, updateQty, removeItem, itemCount, subtotal } = useCart();
+  const panelMotion=usePanelMotion('right');
+  const { items, open, setOpen, updateQty, removeItem, itemCount, subtotal: savedSubtotal } = useCart();
+  const dialogRef=useDialogFocus(open,()=>setOpen(false));
+  const [quote,setQuote]=useState(null),[quoteError,setQuoteError]=useState('');
+  const subtotal=quote?.subtotal??savedSubtotal;
   const [promos, setPromos] = useState([]);
   const [promoDiscount, setPromoDiscount] = useState(0);
 
   useEffect(() => {
     if (!open || items.length === 0) { setPromos([]); setPromoDiscount(0); return; }
-    const controller = new AbortController();
+    const controller = new AbortController();setQuote(null);setQuoteError('');
     const timer = setTimeout(() => {
-      api.post('/promotions/calculate', {
+      api.post('/cart/quote', {fulfillment_type:'pickup',
         items: items.map(i => ({ variantId: i.variantId, qty: i.qty, price: i.price })),
       }, { signal: controller.signal }).then(r => {
         if (controller.signal.aborted) return;
+        setQuote(r.data.data);
         const auto = (r.data.data.appliedPromotions || []).filter(p => p.promo_type !== 'coupon_code');
         setPromos(auto);
         setPromoDiscount(auto.reduce((s, p) => s + (p.discount || 0), 0));
-      }).catch(() => {});
+      }).catch(error => {if(!controller.signal.aborted)setQuoteError(error.response?.data?.message||'Unable to refresh prices. Checkout will check again.');});
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [open, items]);
@@ -43,10 +50,12 @@ export default function CartDrawer() {
           />
 
           <motion.div
+            ref={dialogRef} role="dialog" aria-modal="true" aria-label="Shopping cart" tabIndex={-1}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            {...panelMotion}
             className="fixed right-0 top-0 z-[80] flex h-full w-full max-w-md flex-col border-l border-white/10 bg-white/95 shadow-2xl backdrop-blur-xl"
           >
             {/* Header */}
@@ -61,6 +70,7 @@ export default function CartDrawer() {
                 )}
               </div>
               <button
+                aria-label="Close cart"
                 onClick={() => setOpen(false)}
                 className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
               >
@@ -117,6 +127,7 @@ export default function CartDrawer() {
                               <p className="text-xs text-slate-500">{item.variantLabel}</p>
                             </div>
                             <button
+                              aria-label={`Remove ${item.name}`}
                               onClick={() => removeItem(item.key)}
                               className="shrink-0 rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
                             >
@@ -127,6 +138,7 @@ export default function CartDrawer() {
                           <div className="mt-auto flex items-center justify-between pt-2">
                             <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white">
                               <button
+                                aria-label={`Decrease quantity for ${item.name}`}
                                 onClick={() => updateQty(item.key, item.qty - 1)}
                                 className="rounded-l-xl px-2.5 py-1 text-slate-400 transition hover:text-slate-600"
                               >
@@ -141,6 +153,7 @@ export default function CartDrawer() {
                                 {item.qty}
                               </motion.span>
                               <button
+                                aria-label={`Increase quantity for ${item.name}`}
                                 onClick={() => updateQty(item.key, item.qty + 1)}
                                 className="rounded-r-xl px-2.5 py-1 text-slate-400 transition hover:text-slate-600"
                               >
@@ -148,7 +161,7 @@ export default function CartDrawer() {
                               </button>
                             </div>
                             <div className="text-right">
-                              <p className="font-mono text-sm font-semibold text-slate-900">{money(item.price * item.qty)}</p>
+                              <p className="font-mono text-sm font-semibold text-slate-900">{money((quote?.items.find(row=>Number(row.variantId)===Number(item.variantId))?.price??item.price) * item.qty)}</p>
                               {item.originalPrice && (
                                 <p className="font-mono text-[10px] text-slate-400 line-through">{money(item.originalPrice * item.qty)}</p>
                               )}
@@ -162,6 +175,7 @@ export default function CartDrawer() {
               )}
             </div>
 
+            {quoteError&&<p role="alert" className="px-6 py-3 text-sm text-red-800">{quoteError}</p>}
             {/* Footer */}
             {items.length > 0 && (
               <div className="border-t border-slate-100 bg-white/80 px-6 py-5 backdrop-blur-sm">

@@ -510,16 +510,18 @@ async function fixPointsBalances() {
 }
 
 async function fixStockBalances() {
-  const [result] = await db.query(`
-    UPDATE product_variants pv
-    SET pv.current_stock = (
-      SELECT COALESCE(SUM(sm.change_qty), 0) FROM stock_movements sm WHERE sm.variant_id = pv.id
-    )
-    WHERE pv.current_stock != (
-      SELECT COALESCE(SUM(sm2.change_qty), 0) FROM stock_movements sm2 WHERE sm2.variant_id = pv.id
-    )
-  `);
-  return { fixed: result.affectedRows };
+  const connection=await db.getConnection();
+  try{
+    await connection.beginTransaction();
+    const [variants]=await connection.query('SELECT id,current_stock FROM product_variants ORDER BY id FOR UPDATE');
+    const [movements]=await connection.query('SELECT variant_id,SUM(change_qty) AS balance FROM stock_movements GROUP BY variant_id');
+    const balances=new Map(movements.map(row=>[row.variant_id,Number(row.balance)]));
+    const [reservations]=await connection.query("SELECT variant_id,SUM(quantity) AS reserved FROM website_stock_reservations WHERE state='active' GROUP BY variant_id FOR UPDATE");
+    for(const row of reservations)if((balances.get(row.variant_id)||0)<Number(row.reserved))throw Object.assign(new Error(`Stock repair would invalidate reservations for variant ${row.variant_id}. Reconcile its pending orders and movements first.`),{status:409});
+    let fixed=0;
+    for(const variant of variants){const balance=balances.get(variant.id)||0;if(Number(variant.current_stock)!==balance){await connection.query('UPDATE product_variants SET current_stock=? WHERE id=?',[balance,variant.id]);fixed++;}}
+    await connection.commit();return {fixed};
+  }catch(error){await connection.rollback();throw error;}finally{connection.release();}
 }
 
 module.exports = { salesReport, creditReport, purchaseReport, stockReport, customerReport, profitReport, dataHealthCheck, fixCreditBalances, fixPointsBalances, fixStockBalances };

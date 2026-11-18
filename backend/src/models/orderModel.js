@@ -2,6 +2,7 @@ const db = require('../config/db');
 const customerModel = require('./customerModel');
 const { claimRequest, requestHash } = require('../utils/checkoutRequest');
 const { normalizeOrder } = require('../utils/validateOrder');
+const reservations = require('../services/stockReservations');
 
 // Generates order numbers like ORD-2026-000123
 async function generateOrderNumber(connection) {
@@ -111,8 +112,21 @@ async function createOrder(payload, transactionConnection = null) {
         [item.variant_id]
       );
       if (!variant) throw new Error(`Variant ${item.variant_id} not found`);
-      if (variant.current_stock < quantities.get(item.variant_id)) {
-        throw new Error(`Insufficient stock for variant ${item.variant_id}: have ${variant.current_stock}, need ${item.quantity}`);
+      const available=Number(variant.current_stock)-await reservations.reserved(connection,item.variant_id);
+      if (available < quantities.get(item.variant_id)) {
+        throw new Error(`Insufficient stock for variant ${item.variant_id}: available ${available}, need ${quantities.get(item.variant_id)}`);
+      }
+      if(channel==='website'){
+        const [[current]]=await connection.query(`SELECT pv.retail_price,pv.discount_type,pv.discount_value,pv.is_active,
+          p.is_active AS product_active,p.show_on_website FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=?`,[item.variant_id]);
+        if(!current?.is_active||!current.product_active||!current.show_on_website)throw Object.assign(new Error('A cart item is no longer available'),{status:409});
+        let price=Number(current.retail_price);
+        if(current.discount_type==='percent')price*=1-Number(current.discount_value)/100;
+        if(current.discount_type==='amount')price=Math.max(0,price-Number(current.discount_value));
+        price=Math.round(price*100)/100;
+        const [tiers]=await connection.query('SELECT min_quantity,tier_price FROM variant_price_tiers WHERE variant_id=? AND min_quantity<=? ORDER BY min_quantity DESC LIMIT 1',[item.variant_id,item.quantity]);
+        if(tiers.length)price=Number(tiers[0].tier_price)/Number(tiers[0].min_quantity);
+        if(Math.abs(price-item.unit_price)>0.005)throw Object.assign(new Error('A price changed. Refresh your cart before confirming.'),{status:409});
       }
       item._cost_price = variant.cost_price || 0;
     }
@@ -140,6 +154,7 @@ async function createOrder(payload, transactionConnection = null) {
        delivery_zone_id || null, notes || null]
     );
     const orderId = orderResult.insertId;
+    if(channel==='website')await reservations.reserve(connection,orderId,quantities);
 
     // --- 5. Insert order_items; deduct stock only for POS (website/chatbot wait for acceptance) ---
     const isPOS = channel === 'pos';
@@ -643,7 +658,8 @@ async function acceptOrder(orderId, acceptedBy) {
       const [[variant]] = await connection.query(
         'SELECT current_stock FROM product_variants WHERE id = ? FOR UPDATE', [item.variant_id]
       );
-      if (!variant || variant.current_stock < item.quantity) {
+      const available=variant?Number(variant.current_stock)-await reservations.reserved(connection,item.variant_id,orderId):0;
+      if (!variant || available < item.quantity) {
         throw new Error(`Insufficient stock for variant ${item.variant_id}: have ${variant?.current_stock || 0}, need ${item.quantity}`);
       }
       await connection.query(
@@ -657,6 +673,7 @@ async function acceptOrder(orderId, acceptedBy) {
       );
     }
 
+    await reservations.finish(connection,orderId,'consumed');
     await connection.query('UPDATE orders SET status = ? WHERE id = ?', ['confirmed', orderId]);
     await connection.query(
       'INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)',
@@ -701,6 +718,7 @@ async function rejectOrder(orderId, rejectedBy, rejectionReason) {
       await connection.query('UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?', [item.quantity, item.variant_id]);
       await connection.query("INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id, created_by) VALUES (?, ?, 'refund', 'order', ?, ?)", [item.variant_id, item.quantity, orderId, rejectedBy || null]);
     }
+    await reservations.finish(connection,orderId,'released');
     await connection.query('UPDATE orders SET status = ? WHERE id = ?', ['cancelled', orderId]);
     await connection.query('INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)', [orderId, 'cancelled', rejectedBy || null, `Rejected: ${rejectionReason || 'No reason given'}`]);
     await connection.commit();

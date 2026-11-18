@@ -8,13 +8,16 @@ import ProductCard from '../components/ProductCard';
 import ImageGallery from '../components/ImageGallery';
 import SEO from '../components/SEO';
 import { usePromo } from '../context/PromoContext';
+import ManagedMedia from '../components/ManagedMedia';
+import {useContent} from '../context/ContentContext';
 
 function formatPrice(amount) {
-  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `Rs. ${Number(amount).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 export default function ProductDetail() {
   const { slug } = useParams();
+  const {footer}=useContent();
   const { addItem } = useCart();
   const { getProductPromos } = usePromo();
   const [product, setProduct] = useState(null);
@@ -25,15 +28,17 @@ export default function ProductDetail() {
   const [selectedTier, setSelectedTier] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    api.get(`/products/${slug}`)
+    const controller=new AbortController();setLoading(true);
+    api.get(`/products/${slug}`,{signal:controller.signal})
       .then(r => {
+        if(controller.signal.aborted)return;setSelectedTier(null);
         setProduct(r.data.data);
-        setSelectedVariant(r.data.data.variants[0] || null);
+        setSelectedVariant(r.data.data.variants.length===1?r.data.data.variants[0]:null);
         setQty(1);
       })
-      .catch(() => setProduct(null))
-      .finally(() => setLoading(false));
+      .catch(() => {if(!controller.signal.aborted)setProduct(null);})
+      .finally(() => {if(!controller.signal.aborted)setLoading(false);});
+    return()=>controller.abort();
   }, [slug]);
 
   useEffect(() => {
@@ -52,6 +57,7 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+        <SEO title="Product unavailable" path={`/product/${encodeURIComponent(slug)}`} noIndex/>
         <span className="mb-4 text-5xl">😕</span>
         <h2 className="text-xl font-bold text-slate-800">Product Not Found</h2>
         <p className="mt-2 text-sm text-slate-500">The product you're looking for doesn't exist or has been removed.</p>
@@ -65,7 +71,7 @@ export default function ProductDetail() {
   const v = selectedVariant;
   const hasTiers = v?.price_tiers?.length > 0;
   const hasDiscount = v && v.discount_type !== 'none' && Number(v.discount_value) > 0;
-  const basePrice = hasDiscount ? Number(v.discounted_price) : Number(v?.retail_price);
+  const basePrice = hasDiscount ? Number(v.discounted_price) : Number(v?.retail_price||0);
   const finalPrice = selectedTier ? Number(selectedTier.tier_price) : basePrice;
   const discountPercent = hasDiscount && v.discount_type === 'percent' ? Number(v.discount_value) : null;
   const hasMrpDiscount = v && v.mrp && Number(v.mrp) > Number(v.retail_price);
@@ -83,9 +89,11 @@ export default function ProductDetail() {
     : -1;
 
   const effectiveQty = selectedTier ? selectedTier.min_quantity : qty;
+  const pieces=Number(v?.attributes?.pieces_per_pack?.[0]);
+  const perPiece=Number.isSafeInteger(pieces)&&pieces>0?(selectedTier?finalPrice/selectedTier.min_quantity:basePrice)/pieces:null;
 
   const handleAddToCart = () => {
-    if (!v || !v.in_stock) return;
+    if (!v || !v.in_stock || effectiveQty>Number(v.current_stock)) return;
     const cartPrice = selectedTier ? selectedTier.tier_price / selectedTier.min_quantity : basePrice;
     addItem(
       { id: product.id, name: product.name, slug: product.slug, brand_name: product.brand_name, image_url: v.image_url },
@@ -99,7 +107,7 @@ export default function ProductDetail() {
   const whatsappText = `Hi! I'd like to order ${product.name}${v ? ` (${v.variant_label})` : ''} x${qty}`;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+    <motion.div className="pb-24 sm:pb-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <SEO
         title={product.name}
         path={`/product/${product.slug}`}
@@ -137,6 +145,7 @@ export default function ProductDetail() {
               hasDiscount={hasDiscount || hasMrpDiscount}
               discountLabel={discountPercent ? `-${discountPercent}%` : hasMrpDiscount && mrpPercent > 0 ? `-${mrpPercent}%` : hasDiscount && v.discount_type === 'amount' ? `Rs. ${Number(v.discount_value).toLocaleString()} OFF` : 'SALE'}
             />
+            <div className="mt-5"><ManagedMedia items={product.media||[]}/></div>
           </motion.div>
 
           {/* Product Info */}
@@ -158,12 +167,12 @@ export default function ProductDetail() {
             {/* Price */}
             <div className="mt-4">
               {(hasMrpDiscount || hasDiscount || selectedTier) && (
-                <p className="font-mono text-base text-slate-400 line-through">
+                <p className="font-mono text-base text-slate-500 line-through">
                   {formatPrice(selectedTier ? basePrice * selectedTier.min_quantity : (hasMrpDiscount ? v.mrp : v.retail_price))}
                 </p>
               )}
               <div className="flex items-baseline gap-3">
-                <span className="font-mono text-3xl font-bold text-teal-600">{formatPrice(finalPrice)}</span>
+                <span className="font-mono text-3xl font-bold text-teal-700">{v?formatPrice(finalPrice):'Choose a variant'}</span>
                 {discountPercent ? (
                   <span className="rounded-lg bg-red-500 px-2.5 py-1 text-xs font-bold text-white">-{discountPercent}%</span>
                 ) : hasDiscount && v.discount_type === 'amount' ? (
@@ -178,6 +187,10 @@ export default function ProductDetail() {
                 )}
               </div>
             </div>
+
+            {perPiece!==null&&<p className="mt-2 text-sm text-slate-700">{pieces} pieces per pack · Rs. {perPiece.toFixed(2)} per piece</p>}
+            {v?.attributes&&<dl className="mt-4 grid grid-cols-2 gap-2 text-sm">{Object.entries(v.attributes).map(([key,options])=><div key={key}><dt className="font-semibold capitalize">{key.replaceAll('_',' ')}</dt><dd>{options.join(', ')}</dd></div>)}</dl>}
+            {product.specifications&&<div className="mt-5"><h2 className="font-semibold">Specifications</h2><p className="mt-2 whitespace-pre-line text-slate-700">{product.specifications}</p></div>}
 
             {/* Stock status */}
             {v && (
@@ -242,7 +255,7 @@ export default function ProductDetail() {
                           ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm shadow-primary-200/50'
                           : variant.in_stock
                             ? 'border-slate-200 text-slate-600 hover:border-primary-300 hover:bg-primary-50/50'
-                            : 'border-slate-100 text-slate-400 line-through opacity-60'
+                            : 'border-slate-100 text-slate-500 line-through opacity-60'
                       }`}
                     >
                       {variant.variant_label}
@@ -309,6 +322,7 @@ export default function ProductDetail() {
               {!hasTiers && (
                 <div className="flex items-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
                   <button
+                    aria-label="Decrease quantity"
                     onClick={() => setQty(q => Math.max(1, q - 1))}
                     className="flex h-12 w-12 items-center justify-center text-slate-500 transition-colors hover:bg-slate-50"
                   >
@@ -316,7 +330,9 @@ export default function ProductDetail() {
                   </button>
                   <span className="flex h-12 w-12 items-center justify-center font-mono text-sm font-semibold text-slate-800">{qty}</span>
                   <button
-                    onClick={() => setQty(q => q + 1)}
+                    aria-label="Increase quantity"
+                    disabled={!v||qty>=Number(v.current_stock)}
+                    onClick={() => setQty(q => Math.min(q + 1,Number(v.current_stock)))}
                     className="flex h-12 w-12 items-center justify-center text-slate-500 transition-colors hover:bg-slate-50"
                   >
                     <Plus className="h-4 w-4" />
@@ -326,13 +342,13 @@ export default function ProductDetail() {
 
               <button
                 onClick={handleAddToCart}
-                disabled={!v?.in_stock || added}
+                disabled={!v?.in_stock || added || effectiveQty>Number(v?.current_stock)}
                 className={`flex flex-1 items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-semibold transition-all ${
                   added
                     ? 'bg-emerald-500 text-white scale-[0.97]'
                     : v?.in_stock
                       ? 'bg-gradient-to-r from-primary-500 to-teal-500 text-white shadow-lg shadow-primary-500/25 hover:shadow-xl active:scale-[0.97]'
-                      : 'cursor-not-allowed bg-slate-200 text-slate-400'
+                      : 'cursor-not-allowed bg-slate-200 text-slate-500'
                 }`}
               >
                 {added ? (
@@ -344,15 +360,15 @@ export default function ProductDetail() {
             </div>
 
             {/* Buy via WhatsApp */}
-            <a
-              href={`https://wa.me/94771234567?text=${encodeURIComponent(whatsappText)}`}
+            {footer?.whatsapp && (<a
+              href={`https://wa.me/${footer.whatsapp}?text=${encodeURIComponent(whatsappText)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-[#25D366]/30 bg-[#25D366]/5 py-3.5 text-sm font-semibold text-[#25D366] transition-all hover:border-[#25D366] hover:bg-[#25D366] hover:text-white sm:w-auto sm:px-8"
             >
               <MessageCircle className="h-5 w-5" />
               Buy via WhatsApp
-            </a>
+            </a>)}
 
             {/* Trust badges */}
             <div className="mt-8 grid grid-cols-2 gap-3">
@@ -391,6 +407,10 @@ export default function ProductDetail() {
             </div>
           </section>
         )}
+      </div>
+      <div className="mobile-purchase fixed inset-x-0 bottom-0 z-[45] flex items-center justify-between gap-3 border-t border-primary-100 bg-white/95 px-4 py-3 shadow-lg backdrop-blur sm:hidden">
+        <div className="min-w-0 text-sm"><span className="block truncate font-semibold">{v?.variant_label||'Choose an option above'}</span>{v&&<span>{formatPrice(finalPrice)}</span>}</div>
+        <button type="button" disabled={!v?.in_stock||added||effectiveQty>Number(v?.current_stock)} onClick={handleAddToCart} className="shrink-0 rounded-xl bg-primary-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{added?'Added':'Add to cart'}</button>
       </div>
     </motion.div>
   );

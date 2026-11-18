@@ -3,12 +3,15 @@ import { Link } from 'react-router-dom';
 import { Heart, ShieldCheck, Truck, Users, Star, MessageCircle } from 'lucide-react';
 import PageHero from '../components/PageHero';
 import SEO from '../components/SEO';
+import {useContent} from '../context/ContentContext';
 
 export default function About() {
+  const {pages}=useContent();
+  if(pages?.about)return <><SEO title="About" path="/about" description={pages.about.body?.slice(0,155)}/><PageHero backgroundImage="/images/hero/hero-about.jpg" headline="Our story"/></>;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <SEO title="About" path="/about" description="Learn about LITTORA — Sri Lanka's specialist in diapers, wet wipes, and trending baby items. Better prices, faster delivery, always in stock." />
-      <PageHero backgroundImage="/images/hero/hero-about.jpg" headline="Our Story" subtitle="Why thousands of parents trust Littora" focusPoint="center center" />
+      <PageHero backgroundImage="/images/hero/hero-about.jpg" headline="Our Story" subtitle="Everyday essentials for your family" focusPoint="center center" />
 
       {/* Story */}
       <section className="py-16">
@@ -43,8 +46,8 @@ export default function About() {
               { icon: Heart, title: 'Parent-First', desc: 'We prioritize your baby\'s comfort and safety above everything else.' },
               { icon: Truck, title: 'Island-wide Delivery', desc: 'From Colombo to Jaffna, we deliver everywhere in Sri Lanka.' },
               { icon: Star, title: 'Best Prices', desc: 'Competitive pricing with regular discounts and bundle deals.' },
-              { icon: Users, title: 'Community', desc: 'Join thousands of happy parents who shop with us regularly.' },
-              { icon: MessageCircle, title: '24/7 Support', desc: 'Chat with us anytime on WhatsApp for help or product advice.' },
+              { icon: Users, title: 'Community', desc: 'Discover baby care, toys and home essentials for your family.' },
+              { icon: MessageCircle, title: 'Customer Support', desc: 'Contact our team for help with products and orders.' },
             ].map((item, i) => (
               <motion.div
                 key={i}

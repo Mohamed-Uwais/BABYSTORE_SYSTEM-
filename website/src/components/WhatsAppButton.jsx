@@ -23,10 +23,11 @@ export default function WhatsAppButton() {
     return () => clearTimeout(hide);
   }, [autoTooltip]);
 
+  if(!footer?.whatsapp)return null;
   const showTooltip = hovered || autoTooltip;
 
   return (
-    <div className="fixed bottom-6 right-24 z-40">
+    <div className="fixed bottom-24 sm:bottom-6 right-24 z-40">
       <AnimatePresence>
         {showTooltip && (
           <motion.span
@@ -41,7 +42,7 @@ export default function WhatsAppButton() {
         )}
       </AnimatePresence>
       <a
-        href={`https://wa.me/${footer?.whatsapp || '94771234567'}?text=Hi!%20I'm%20interested%20in%20your%20products`}
+        href={`https://wa.me/${footer.whatsapp}?text=Hi!%20I'm%20interested%20in%20your%20products`}
         target="_blank"
         rel="noopener noreferrer"
         onMouseEnter={() => setHovered(true)}

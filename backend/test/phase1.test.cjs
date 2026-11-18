@@ -42,6 +42,29 @@ test('allows zero-balance settlement while rejecting negative payments', () => {
 });
 
 function response() { return { status(n) { this.statusCode = n; return this; }, json(body) { this.body = body; return this; } }; }
+test('existing chatbot sales cannot consume stock reserved by website orders',async()=>{
+ const calls=[];
+ const connection={beginTransaction:async()=>{},rollback:async()=>calls.push('rollback'),release:()=>{},query:async sql=>{
+  calls.push(sql);
+  if(sql.includes('GET_LOCK'))return [[{acquired:1}]];
+  if(sql.includes('FROM product_variants'))return [[{id:1,current_stock:2,retail_price:100}]];
+  if(sql.includes('AS reserved'))return [[{reserved:1}]];
+  return [{}];
+ }};
+ const model=load('../../chatbot/src/services/orderService.js',{'../config/db':{getConnection:async()=>connection},'../utils/logger':{info(){}}});
+ await assert.rejects(model.createOrder({channel:'whatsapp',items:[{variant_id:1,quantity:2}]}),/Insufficient stock/);
+ assert.ok(calls.includes('rollback'));assert.ok(!calls.some(sql=>sql.includes('INSERT INTO orders')));
+});
+test('stock-balance repair refuses to invalidate active website reservations',async()=>{
+ const calls=[];const connection={beginTransaction:async()=>{},rollback:async()=>calls.push('rollback'),release:()=>{},query:async sql=>{
+  calls.push(sql);if(sql.includes('FROM product_variants'))return [[{id:1,current_stock:3}]];
+  if(sql.includes('FROM stock_movements'))return [[{variant_id:1,balance:1}]];
+  if(sql.includes('FROM website_stock_reservations'))return [[{variant_id:1,reserved:2}]];
+  throw Error('Unexpected mutation');
+ }};
+ const model=load('../src/models/reportModel.js',{'../config/db':{getConnection:async()=>connection},'./financialEngine':{}});
+ await assert.rejects(model.fixStockBalances(),{status:409});assert.ok(calls.includes('rollback'));
+});
 test('database authentication failure returns 503 rather than invalidating the token', async () => {
   const auth = load('../src/middleware/authMiddleware.js', { jsonwebtoken: { verify: () => ({ id: 1 }) }, '../models/userModel': { getUserById: async () => { throw { code: 'ECONNREFUSED' }; } } });
   const res = response();
@@ -89,6 +112,7 @@ function orderHarness({ stock = 10, failInsert = false, deducted = 0 } = {}) {
       if (sql.includes('AS total_returned_qty')) return [[{ total_returned_qty: 1 }]];
       if (sql.includes('SUM(quantity) AS quantity FROM order_items')) return [[{ variant_id: 1, quantity: 2 }]];
       if (sql.includes('AS deducted')) return [[{ deducted }]];
+      if (sql.includes('AS reserved')) return [[{reserved:0}]];
       return [{}];
     },
   };

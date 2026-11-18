@@ -11,6 +11,7 @@ async function protect(req, res, next) {
   let decoded;
   try {
     decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.scope === 'website-preview' || !decoded.id) throw new Error('Not a login token');
   } catch {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }

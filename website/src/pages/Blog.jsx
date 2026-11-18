@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link,useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import api from '../api/client';
@@ -19,15 +19,19 @@ const placeholder = 'data:image/svg+xml,' + encodeURIComponent(
 
 export default function Blog() {
   const [posts, setPosts] = useState([]);
+  const [params,setParams]=useSearchParams();
+  const page=Math.max(1,Math.min(10000,Number.parseInt(params.get('page'),10)||1));
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/blog?limit=20')
-      .then(r => { setPosts(r.data.data.posts); setTotal(r.data.data.total); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    const controller=new AbortController();setLoading(true);
+    api.get(`/blog?limit=12&offset=${(page-1)*12}`,{signal:controller.signal})
+      .then(r=>{if(!controller.signal.aborted){setPosts(r.data.data.posts);setTotal(r.data.data.total);}})
+      .catch(()=>{if(!controller.signal.aborted)setPosts([]);})
+      .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return()=>controller.abort();
+  },[page]);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -68,7 +72,7 @@ export default function Blog() {
                     />
                   </div>
                   <div className="p-5">
-                    <div className="mb-2 flex items-center gap-2 text-xs text-slate-400">
+                    <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
                       <span>{new Date(post.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                       <span>&middot;</span>
                       <span>{post.read_time_min} min read</span>
@@ -83,6 +87,7 @@ export default function Blog() {
             ))}
           </div>
         )}
+        {total>12&&<nav aria-label="Blog pages" className="mt-8 flex justify-center gap-6"><button disabled={page===1} onClick={()=>setParams({page:String(page-1)})}>Previous</button><span>Page {page} of {Math.ceil(total/12)}</span><button disabled={page*12>=total} onClick={()=>setParams({page:String(page+1)})}>Next</button></nav>}
       </div>
     </motion.div>
   );

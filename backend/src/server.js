@@ -34,8 +34,13 @@ const { randomUUID } = require('node:crypto');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+// Trust only a local reverse proxy; remote clients cannot select their own IP.
+app.set('trust proxy','loopback');
+app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');next();});
+if(process.env.APP_ENV==='staging')app.use((req,res,next)=>{res.setHeader('X-Robots-Tag','noindex, nofollow');next();});
 
 app.use(cors());
+app.use('/api/website-studio',express.json({limit:'1mb'}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -79,6 +84,10 @@ app.use('/api/suppliers', protect, requirePermission('purchasing'), supplierRout
 app.use('/api/purchase-orders', protect, requirePermission('purchasing'), purchaseOrderRoutes);
 app.use('/api/catalog', protect, requirePermission('inventory'), catalogRoutes);
 app.use('/api/inventory', protect, requirePermission('inventory'), inventoryRoutes);
+if (process.env.WEBSITE_STUDIO_ENABLED === 'true') {
+  app.use('/api/website-studio', protect, requirePermission('settings'), require('./routes/websiteStudioRoutes'));
+}
+
 app.use('/api/settings', protect, (req, res, next) => {
   if (req.method === 'GET' && req.path === '/') return next(); // Receipt/store metadata is needed by cashiers.
   return requirePermission('settings')(req, res, next);
@@ -123,6 +132,7 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5001;
 
-app.listen(PORT, () => {
+const HOST = process.env.APP_ENV === 'staging' ? '127.0.0.1' : undefined;
+app.listen(PORT, HOST, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

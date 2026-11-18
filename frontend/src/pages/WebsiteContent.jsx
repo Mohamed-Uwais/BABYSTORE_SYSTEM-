@@ -1,71 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState,useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageWrapper from '../components/PageWrapper';
+import { Link } from 'react-router-dom';
+import WebsiteSettingsEditor from '../components/WebsiteSettingsEditor';
+import WebsiteImageUpload from '../components/WebsiteImageUpload';
 
-const DEFAULTS = {
-  hero: {
-    badge: "Sri Lanka's #1 Diaper & Wipes Store",
-    headline_1: 'Better Prices. Faster Delivery.',
-    headline_2: 'Diapers. Wipes. Delivered.',
-    subtitle: 'The best place in Sri Lanka to buy diapers and wet wipes. Genuine brands, unbeatable prices, always in stock.',
-    cta_text: 'Shop Now',
-    whatsapp_text: 'Chat on WhatsApp',
-    delivery_msg: 'Free delivery on orders over Rs. 5,000',
-  },
-  promo_banners: {
-    banners: [
-      { text: 'Buy 2 Get 1 Free on Huggies this week!', icon: '🔥', cta: 'Shop Huggies', link: '/shop?brand=Huggies', color: 'orange' },
-      { text: 'Free Delivery over Rs. 5,000!', icon: '🚚', cta: 'Start Shopping', link: '/shop', color: 'green' },
-      { text: 'New: MamyPoko Extra Dry now in stock!', icon: '🎁', cta: 'View Now', link: '/shop?brand=MamyPoko', color: 'blue' },
-    ],
-  },
-  categories: {
-    items: [
-      { name: 'Diapers', desc: 'Pants & tape-style, every size always in stock', brands: 'Pampers · Huggies · MamyPoko' },
-      { name: 'Wet Wipes', desc: 'Baby wipes for every need — scented, unscented, travel', brands: 'Pigeon · Water Wipes · Huggies' },
-      { name: 'Trending', desc: 'Cute finds and gifting essentials parents love', brands: 'Seasonal picks · Gifts · Accessories' },
-    ],
-  },
-  stats: {
-    items: [
-      { value: '500+', label: 'Happy Parents' },
-      { value: '10,000+', label: 'Packs Delivered' },
-      { value: '24hr', label: 'Fast Delivery' },
-      { value: '100%', label: 'Genuine Products' },
-    ],
-  },
-  brand_story: {
-    title: 'Why Parents Choose Littora',
-    paragraph_1: "We started Littora because we noticed Sri Lankan parents were paying too much for diapers. As parents ourselves, we knew there had to be a better way — genuine products at fair prices, delivered right to your doorstep.",
-    paragraph_2: "Today, we're trusted by hundreds of families across the island. We work directly with authorized distributors to guarantee every product is 100% genuine — no fakes, no expired stock, no compromises on your baby's comfort.",
-  },
-  testimonials: {
-    items: [
-      { quote: "Best prices for Huggies in Sri Lanka. Delivery was super fast — ordered at 10am and got it by 3pm the same day!", name: 'Amaya Perera', city: 'Colombo 05', stars: 5 },
-      { quote: "මාසයක් පාසා order කරනවා. සැමවිටම genuine products, කවදාවත් disappoint වෙලා නෑ. Highly recommend! 💯", name: 'Sanduni Fernando', city: 'Nugegoda', stars: 5 },
-      { quote: "Love how easy it is to reorder through WhatsApp! The team remembers my usual order. Personal service you won't find anywhere else.", name: 'Nimesha Silva', city: 'Galle', stars: 5 },
-    ],
-  },
-  cta_banner: {
-    badge: 'Limited Time Offers',
-    headline: 'Ready to Stock Up?',
-    subtitle: 'Free delivery on orders over Rs. 5,000. Buy 2 Get 1 Free on selected brands!',
-  },
-  footer: {
-    phone: '+94 77 123 4567',
-    email: 'hello@littoradiapers.com',
-    address: 'Colombo, Sri Lanka',
-    facebook: '#',
-    instagram: '#',
-    whatsapp: '94771234567',
-  },
-  announcement_bar: {
-    text: 'Buy 2 Get 1 FREE!',
-    enabled: true,
-  },
-};
+import { DEFAULTS } from '../../../shared/websiteContentDefaults.mjs';
 
 function SectionCard({ title, icon, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -101,14 +43,15 @@ function SectionCard({ title, icon, children, defaultOpen = false }) {
 }
 
 function Field({ label, value, onChange, multiline, placeholder }) {
+  const id=useId();
   const cls = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
   return (
     <div className="mb-3">
-      <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
+      <label htmlFor={id} className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
       {multiline ? (
-        <textarea value={value} onChange={e => onChange(e.target.value)} className={cls + ' min-h-[80px]'} placeholder={placeholder} />
+        <textarea id={id} value={value} onChange={e => onChange(e.target.value)} className={cls + ' min-h-[80px]'} placeholder={placeholder} />
       ) : (
-        <input type="text" value={value} onChange={e => onChange(e.target.value)} className={cls} placeholder={placeholder} />
+        <input id={id} type="text" value={value} onChange={e => onChange(e.target.value)} className={cls} placeholder={placeholder} />
       )}
     </div>
   );
@@ -119,10 +62,22 @@ export default function WebsiteContent() {
   const [content, setContent] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState({});
+  const [studio, setStudio] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [revisions, setRevisions] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState('');
+  const [previewWidth, setPreviewWidth] = useState('390');
 
   useEffect(() => {
-    client.get('/settings/content').then(r => {
-      const data = r.data.data || {};
+    client.get('/website-studio/draft').then(r => {
+      setStudio(true);setVersion(r.data.data.version);
+      client.get('/website-studio/revisions').then(result=>setRevisions(result.data.data)).catch(()=>{});
+      return r.data.data.document;
+    }).catch(error => {
+      if(error.response?.status===404)return client.get('/settings/content').then(r=>r.data.data);
+      throw error;
+    }).then(data => {
       const merged = {};
       for (const key of Object.keys(DEFAULTS)) {
         merged[key] = { ...DEFAULTS[key], ...(data[key] || {}) };
@@ -131,20 +86,51 @@ export default function WebsiteContent() {
       }
       setContent(merged);
     }).catch(() => {
-      setContent({ ...DEFAULTS });
+      toast.error('Unable to load website content. Reload before editing.');
+      setContent({});
     }).finally(() => setLoading(false));
   }, []);
 
   async function saveSection(key) {
     setSaving(s => ({ ...s, [key]: true }));
+    setBusy(true);
     try {
-      await client.put(`/settings/content/${key}`, { content: content[key] });
-      toast.success(`${key.replace(/_/g, ' ')} saved`);
+      if(studio){
+        const r=await client.put(`/website-studio/draft/${key}`,{content:content[key],expectedVersion:version});
+        setVersion(r.data.data.version);setPreview('');
+      }else await client.put(`/settings/content/${key}`, { content: content[key] });
+      toast.success(`${key.replace(/_/g, ' ')} ${studio?'draft saved':'saved'}`);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Save failed');
     } finally {
       setSaving(s => ({ ...s, [key]: false }));
+      setBusy(false);
     }
+  }
+
+  async function studioAction(action,revisionId){
+    setBusy(true);setPreview('');
+    try{
+      let currentVersion=version;
+      if(action!=='restore'){
+        const saved=await client.put('/website-studio/draft',{document:content,expectedVersion:version});
+        currentVersion=saved.data.data.version;setVersion(currentVersion);
+      }
+      if(action==='preview')setPreview((await client.post('/website-studio/preview')).data.data.url);
+      if(action==='publish'){
+        const published=await client.post('/website-studio/publish',{expectedVersion:currentVersion});
+        setVersion(published.data.data.version);
+        setRevisions((await client.get('/website-studio/revisions')).data.data);
+        toast.success('Content published to this environment.');
+      }
+      if(action==='restore'){
+        const restored=await client.post(`/website-studio/restore/${revisionId}`,{expectedVersion:version});
+        setVersion(restored.data.data.version);
+        setContent(Object.fromEntries(Object.entries(DEFAULTS).map(([key,value])=>[key,{...value,...(restored.data.data.document[key]||{})}])));
+        toast.success('Revision restored to draft. Review before publishing.');
+      }
+      if(action==='save')toast.success('All drafts saved.');
+    }catch(error){toast.error(error.response?.data?.message||'Operation failed.');}finally{setBusy(false);}
   }
 
   function update(section, field, value) {
@@ -204,10 +190,24 @@ export default function WebsiteContent() {
       <div className="mx-auto max-w-3xl px-4 py-6 lg:px-6">
         <div className="mb-6">
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Website Content</h1>
+          <Link to="/inventory/website-filters" className="text-sm text-blue-700 underline">Manage category filters and variant assignments</Link>
           <p className="text-sm text-slate-500 dark:text-slate-400">Edit text, banners, and testimonials that appear on your website.</p>
         </div>
 
-        <div className="space-y-3">
+        {studio && <section className="mb-5 space-y-3 rounded-xl border bg-white p-4 text-slate-900">
+          <p>Draft version {version}. Saving does not publish website content.</p>
+          <div className="flex flex-wrap gap-3">
+            <button disabled={busy} onClick={()=>studioAction('save')} className={btnCls}>Save all drafts</button>
+            <button disabled={busy} onClick={()=>studioAction('preview')} className={btnCls}>Preview draft</button>
+            <button disabled={busy} onClick={()=>studioAction('publish')} className={btnCls}>Publish saved content</button>
+          </div>
+          <label>Restore earlier content to draft <select disabled={busy} value="" onChange={e=>{if(e.target.value)studioAction('restore',e.target.value);}} className="ml-2 rounded border p-2">
+            <option value="">Choose revision</option>{revisions.map(row=><option key={row.id} value={row.id}>#{row.id} — {row.action} — {new Date(row.created_at).toLocaleString()}</option>)}
+          </select></label>
+          {preview && <div><label>Preview width <select value={previewWidth} onChange={e=>setPreviewWidth(e.target.value)}><option value="390">Mobile</option><option value="1280">Desktop</option></select></label><div className="overflow-auto"><iframe title="Unpublished website preview" src={preview} referrerPolicy="no-referrer" style={{width:Number(previewWidth),height:700,border:'1px solid #ccc'}}/></div></div>}
+        </section>}
+        <fieldset disabled={busy || !Object.keys(content).length} className="space-y-3">
+          {studio && <WebsiteSettingsEditor content={content} setContent={setContent}/>}
           {/* Hero */}
           <SectionCard title="Hero Section" icon="🏠" defaultOpen>
             <Field label="Badge text" value={c.hero?.badge || ''} onChange={v => update('hero', 'badge', v)} />
@@ -233,6 +233,8 @@ export default function WebsiteContent() {
                     <button onClick={() => removeArrayItem('promo_banners', 'banners', i)} className="rounded p-1 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">✕</button>
                   </div>
                 </div>
+                <label className="mb-3 block text-sm"><input type="checkbox" checked={b.enabled!==false} onChange={e=>updateArrayItem('promo_banners','banners',i,'enabled',e.target.checked)}/> Show this banner</label>
+                {studio&&<WebsiteImageUpload onChange={url=>updateArrayItem('promo_banners','banners',i,'bg_image',url)}/>}
                 <Field label="Text" value={b.text} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'text', v)} />
                 <div className="grid grid-cols-3 gap-2">
                   <Field label="Icon (fallback)" value={b.icon} onChange={v => updateArrayItem('promo_banners', 'banners', i, 'icon', v)} />
@@ -265,6 +267,10 @@ export default function WebsiteContent() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-500">Category {i + 1}</span>
                 </div>
+                <div className="my-3 flex gap-4"><button type="button" disabled={i===0} onClick={()=>moveArrayItem('categories','items',i,i-1)}>Move up</button><button type="button" onClick={()=>removeArrayItem('categories','items',i)}>Remove card</button></div>
+                <label className="block text-sm"><input type="checkbox" checked={cat.enabled!==false} onChange={e=>updateArrayItem('categories','items',i,'enabled',e.target.checked)}/> Show category card</label>
+                {studio&&<WebsiteImageUpload onChange={url=>updateArrayItem('categories','items',i,'image',url)}/>}
+                <Field label="Catalogue category (exact name)" value={cat.category||cat.name} onChange={v=>updateArrayItem('categories','items',i,'category',v)}/>
                 <Field label="Name" value={cat.name} onChange={v => updateArrayItem('categories', 'items', i, 'name', v)} />
                 <Field label="Description" value={cat.desc} onChange={v => updateArrayItem('categories', 'items', i, 'desc', v)} />
                 <Field label="Brands" value={cat.brands} onChange={v => updateArrayItem('categories', 'items', i, 'brands', v)} />
@@ -276,6 +282,7 @@ export default function WebsiteContent() {
                 )}
               </div>
             ))}
+            <button type="button" className="mr-4 rounded border px-3 py-2" onClick={()=>addArrayItem('categories','items',{name:'',category:'',desc:'',brands:'',image:'',enabled:true})}>Add category card</button>
             <button onClick={() => saveSection('categories')} disabled={saving.categories} className={btnCls}>
               {saving.categories ? 'Saving...' : 'Save Categories'}
             </button>
@@ -355,12 +362,15 @@ export default function WebsiteContent() {
 
           {/* Footer */}
           <SectionCard title="Footer" icon="📋">
+            <Field label="Footer description" multiline value={c.footer?.description || ''} onChange={v => update('footer', 'description', v)} />
             <Field label="Phone" value={c.footer?.phone || ''} onChange={v => update('footer', 'phone', v)} />
             <Field label="Email" value={c.footer?.email || ''} onChange={v => update('footer', 'email', v)} />
             <Field label="Address" value={c.footer?.address || ''} onChange={v => update('footer', 'address', v)} />
             <Field label="WhatsApp number (digits only)" value={c.footer?.whatsapp || ''} onChange={v => update('footer', 'whatsapp', v)} />
             <Field label="Facebook URL" value={c.footer?.facebook || ''} onChange={v => update('footer', 'facebook', v)} />
             <Field label="Instagram URL" value={c.footer?.instagram || ''} onChange={v => update('footer', 'instagram', v)} />
+            <Field label="YouTube URL" value={c.footer?.youtube || ''} onChange={v => update('footer', 'youtube', v)} />
+            <Field label="TikTok URL" value={c.footer?.tiktok || ''} onChange={v => update('footer', 'tiktok', v)} />
             <button onClick={() => saveSection('footer')} disabled={saving.footer} className={btnCls}>
               {saving.footer ? 'Saving...' : 'Save Footer'}
             </button>
@@ -382,7 +392,7 @@ export default function WebsiteContent() {
               {saving.announcement_bar ? 'Saving...' : 'Save Announcement'}
             </button>
           </SectionCard>
-        </div>
+        </fieldset>
       </div>
     </PageWrapper>
   );
