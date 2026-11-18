@@ -6,8 +6,9 @@ do not run older migrations blindly against the deployed schema.
 
 ## Legacy orders and stock cutover
 
-1. Obtain the actual deployed source/configuration and current schema; the recorded
-   `2255375a5440b73894e3f1ef6b445a8fc48ff6e5` commit is not present locally.
+1. Tracked baseline parity is confirmed: production `2255375` and local `9c8f7b2`
+   share tree `6ea49b8dc271d6fb2c41d7ae5bcbd9131885d526`. Still verify running
+   process/build identity, production configuration and current schema.
 2. Rehearse on a separate, authorized sanitized copy. The read-only
    `node scripts/audit-staging-reservations.cjs` reports pending orders by variant,
    with ordered quantity, net sale/refund deductions, active holds and classification.
@@ -81,10 +82,10 @@ Mitigation: keep build/dev services private, process only trusted build inputs,
 serve frontend dist files rather than Vite, and omit development dependencies from
 the deployed API. These measures reduce exposure but do not clear the advisories.
 
-Minimum production comparison inputs (read-only): current deployed HEAD and
-tracked-change filenames; metadata and tracked application source for recorded
-commit 2255375a5440b73894e3f1ef6b445a8fc48ff6e5; current source differences if HEAD
-changed; confirmation that the running API/web roots use that checkout/build.
+Production source baseline and clean tracked status are confirmed by owner-run
+commands and matching tree IDs (see DEPLOYED-BASELINE.md). No additional source
+archive is needed for that comparison. Remaining read-only evidence: confirmation
+that the running API/web roots use that checkout/build and current schema/configuration.
 Do not include .env, credentials, private keys, database rows or uploads. Metadata
 alone cannot establish source parity. Also confirm API-worker/server count, Nginx
 and CDN topology, listen addresses and forwarding-header handling using only the
