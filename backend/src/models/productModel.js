@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const imageModel = require('./productImageModel');
+const {optionalNumber,validateVariant}=require('../utils/variantInput');
 
 function slugify(text) {
   return String(text)
@@ -85,6 +86,7 @@ async function createProduct({ category_id, brand_id, name, slug, description, l
 //              discount_type, discount_value, current_stock, low_stock_threshold, image_url }]
 async function createProductWithVariants({ category_id, brand_id, name, slug, description, low_stock_threshold, variants, created_by }) {
   if (!variants || !variants.length) throw new Error('Product must have at least one variant');
+  variants.forEach(validateVariant);
 
   const connection = await db.getConnection();
   try {
@@ -93,7 +95,7 @@ async function createProductWithVariants({ category_id, brand_id, name, slug, de
     const [result] = await connection.query(`
       INSERT INTO products (category_id, brand_id, name, slug, description, low_stock_threshold)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [category_id, brand_id || null, name, slug || slugify(name), description || null, low_stock_threshold || 5]);
+    `, [category_id, brand_id || null, name, slug || slugify(name)+'-'+require('crypto').randomUUID().slice(0,8), description || null, low_stock_threshold || 5]);
     const productId = result.insertId;
 
     for (const v of variants) {
@@ -103,12 +105,13 @@ async function createProductWithVariants({ category_id, brand_id, name, slug, de
            retail_price, mrp, discount_type, discount_value, current_stock, low_stock_threshold)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [productId, v.sku, v.barcode || null, v.variant_label, v.image_url || null,
-          v.cost_price || 0, v.wholesale_price || 0, v.retail_price || 0, v.mrp || null,
+          optionalNumber(v.cost_price,'Cost'), v.wholesale_price || 0, Number(v.retail_price), v.mrp || null,
           v.discount_type || 'none', v.discount_value || 0,
           v.current_stock || 0, v.low_stock_threshold || null]);
 
       // Opening stock is a real stock event - keep the audit trail complete from day one
       if (v.current_stock > 0) {
+        await connection.query('INSERT INTO stock_batches(variant_id,quantity_received,quantity_remaining,unit_cost) VALUES(?,?,?,?)',[vResult.insertId,Number(v.current_stock),Number(v.current_stock),optionalNumber(v.cost_price,'Cost')]);
         await connection.query(`
           INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, created_by)
           VALUES (?, ?, 'manual_adjustment', 'opening_stock', ?)
@@ -145,16 +148,17 @@ async function updateProduct(id, { category_id, brand_id, name, description, low
 
 async function updateVariant(variantId, {
   sku, barcode, variant_label, image_url, cost_price, wholesale_price,
-  retail_price, mrp, discount_type, discount_value, low_stock_threshold, is_active,
+  retail_price, mrp, discount_type, discount_value, low_stock_threshold, is_active, weight_grams,
 }) {
+  validateVariant({sku,retail_price,cost_price,wholesale_price,mrp,discount_type,discount_value,low_stock_threshold,weight_grams});
   await db.query(`
     UPDATE product_variants
     SET sku = ?, barcode = ?, variant_label = ?, image_url = COALESCE(?, image_url),
-        cost_price = ?, wholesale_price = ?, retail_price = ?, mrp = ?,
+        cost_price = CASE WHEN ? THEN cost_price ELSE ? END, wholesale_price = ?, retail_price = ?, mrp = ?, weight_grams = ?,
         discount_type = ?, discount_value = ?, low_stock_threshold = ?, is_active = ?
     WHERE id = ?
   `, [sku, barcode || null, variant_label, image_url || null,
-      cost_price || 0, wholesale_price || 0, retail_price || 0, mrp || null,
+      cost_price===undefined, optionalNumber(cost_price,'Cost'), wholesale_price || 0, Number(retail_price), mrp || null, optionalNumber(weight_grams,'Weight',{integer:true}),
       discount_type || 'none', discount_value || 0, low_stock_threshold || null,
       is_active !== false, variantId]);
 }

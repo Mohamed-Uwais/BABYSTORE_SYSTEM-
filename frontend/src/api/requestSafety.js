@@ -5,13 +5,13 @@ export function protectCheckout(client, checkoutPath) {
   let saved = null;
   const slot = `littora:checkout:${checkoutPath}`;
   client.post = (url, body, config = {}) => {
-    if (url !== checkoutPath) return post(url, body, config);
+    if (checkoutPath instanceof RegExp ? !checkoutPath.test(url) : url !== checkoutPath) return post(url, body, config);
     if (pending) return pending;
     const run = async () => {
       const data = body instanceof FormData
         ? [...body.entries()].map(([key, value]) => [key, value instanceof Blob ? [value.name, value.size, value.lastModified] : value])
         : body;
-      const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(data)));
+      const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([url,data])));
       const fingerprint = [...new Uint8Array(bytes)].map(n => n.toString(16).padStart(2, '0')).join('');
       try { saved = JSON.parse(sessionStorage.getItem(slot)) || saved; } catch { /* memory fallback */ }
       if (!saved || saved.fingerprint !== fingerprint) saved = { fingerprint, key: crypto.randomUUID() };

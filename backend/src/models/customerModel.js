@@ -95,40 +95,72 @@ async function convertToLoyalty(id) {
   return getCustomerById(id);
 }
 
-async function recordCreditRepayment(customerId, amount, notes, createdBy) {
-  amount = Number(amount);
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive');
+async function recordCreditRepayment(customerId, amount, notes, createdBy, options={}) {
+  const {moneyCents}=require('../utils/settlementAllocation');
+  const cents=moneyCents(amount,'repayment');
+  const {order_id,method,account,business_receipt_date,key}=options;
+  if(!cents||!Number.isSafeInteger(order_id)||!['cash','card','bank_transfer'].includes(method)||typeof account!=='string'||!account.trim()||account.length>100)throw Error('Choose an original bill, payment method and receiving account');
+  if(typeof key!=='string'||!/^[-\w]{8,80}$/.test(key))throw Error('Repayment submission key required');
+  const date=business_receipt_date;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date||'')||Number.isNaN(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date)throw Error('Enter the business receipt date');
+  const hash=require('../utils/checkoutRequest').requestHash({customerId,cents,notes,order_id,method,account,date});
+  const connection=await db.getConnection();
+  try{
+    await connection.beginTransaction();
+    const [[customer]]=await connection.query('SELECT credit_balance FROM customers WHERE id=? FOR UPDATE',[customerId]);
+    if(!customer)throw Error('Customer not found');
+    const requestKey=createdBy+':'+key;
+    const [[prior]]=await connection.query('SELECT payload_hash FROM credit_receipts WHERE request_key=?',[requestKey]);
+    if(prior){
+      if(prior.payload_hash!==hash)throw Error('Repayment changed on retry');
+      await connection.commit();return getCustomerById(customerId);
+    }
+    if(cents>moneyCents(customer.credit_balance,'outstanding balance'))throw Error('Repayment exceeds remaining customer debt');
+    const [[order]]=await connection.query(`SELECT o.*,
+      (SELECT SUM(amount) FROM order_payments WHERE order_id=o.id AND payment_method='pay_later') AS credit,
+      (SELECT COALESCE(SUM(amount),0) FROM credit_receipts r WHERE order_id=o.id AND NOT EXISTS(SELECT 1 FROM credit_receipt_reversals rev WHERE rev.receipt_id=r.id)) AS repaid,
+      (SELECT IF(COUNT(*)=COUNT(fifo_cost_total),SUM(fifo_cost_total),NULL) FROM order_items WHERE order_id=o.id) AS fifo
+      FROM orders o WHERE o.id=? AND o.customer_id=? FOR UPDATE`,[order_id,customerId]);
+    if(!order||!order.credit||['cancelled','refunded','partially_refunded'].includes(order.status))throw Error('Select an outstanding original credit bill');
+    const [[legacy]]=await connection.query("SELECT id FROM customer_ledger WHERE customer_id=? AND entry_type='credit_repaid' AND reference_type='manual' LIMIT 1",[customerId]);
+    if(legacy)throw Error('Historical repayments need bill allocation reconciliation before collecting against this bill');
+    if(cents>moneyCents(order.credit,'bill credit')-moneyCents(order.repaid,'prior payments'))throw Error('Repayment exceeds remaining bill debt');
+    const merchandise=Math.max(0,Math.round((Number(order.grand_total)-Number(order.delivery_fee))*100));
+    const gross=moneyCents(order.grand_total,'bill total');
+    const [initialPayments]=await connection.query('SELECT id,payment_method,amount FROM order_payments WHERE order_id=? ORDER BY id',[order_id]);
+    const initialCollections=require('../utils/counterCollections').counterCollections({...order,fifo_cost_total:order.fifo},initialPayments);
+    const initialReceived=initialCollections.reduce((n,p)=>n+moneyCents(p.amount,'initial receipt'),0);
+    const previous=moneyCents(order.repaid,'prior payments')+initialReceived;
+    const allocated=Math.round((previous+cents)*merchandise/gross)-Math.round(previous*merchandise/gross);
+      const [priorCosts]=await connection.query('SELECT merchandise_amount AS amount,recognized_fifo_cost FROM credit_receipts r WHERE order_id=? AND NOT EXISTS(SELECT 1 FROM credit_receipt_reversals rev WHERE rev.receipt_id=r.id)',[order_id]);
+        const recognizedCost=require('../utils/collectionCost')(order.fifo,merchandise/100,allocated/100,[...initialCollections.map(p=>({amount:p.merchandise_amount,recognized_fifo_cost:p.recognized_fifo_cost})),...priorCosts]);
+    const [receipt]=await connection.query(`INSERT INTO credit_receipts(customer_id,order_id,amount,method,receiving_account,business_receipt_date,staff_id,notes,request_key,payload_hash,merchandise_amount,merchandise_total,fifo_cost_total)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,[customerId,order_id,cents/100,method,account.trim(),date,createdBy,notes||null,requestKey,hash,allocated/100,merchandise/100,order.fifo]);
+      await connection.query('UPDATE credit_receipts SET recognized_fifo_cost=? WHERE id=?',[recognizedCost,receipt.insertId]);
+    await addLedgerEntry(connection,{customer_id:customerId,entry_type:'credit_repaid',credit_delta:-cents/100,reference_type:'credit_receipt',reference_id:receipt.insertId,notes,created_by:createdBy});
+    await connection.commit();return getCustomerById(customerId);
+  }catch(error){await connection.rollback();throw error}finally{connection.release()}
+}
 
-  const connection = await db.getConnection();
+async function reverseCreditReceipt(customerId,receiptId,reason,staffId) {
+  if(typeof reason!=='string'||!reason.trim()||reason.length>500)throw Error('A reversal reason is required');
+  const connection=await db.getConnection();
   try {
     await connection.beginTransaction();
-    const [[customer]] = await connection.query('SELECT credit_balance FROM customers WHERE id = ? FOR UPDATE', [customerId]);
-    if (!customer) throw new Error('Customer not found');
-    const balance = Number(customer.credit_balance);
-    if (balance <= 0) {
-      throw new Error('Customer has no outstanding credit to repay');
+    const [[customer]]=await connection.query('SELECT id FROM customers WHERE id=? FOR UPDATE',[customerId]);
+    if(!customer)throw Error('Customer not found');
+    const [[receipt]]=await connection.query('SELECT * FROM credit_receipts WHERE id=? AND customer_id=? FOR UPDATE',[receiptId,customerId]);
+    if(!receipt)throw Error('Receipt not found');
+    const [[prior]]=await connection.query('SELECT reason,staff_id FROM credit_receipt_reversals WHERE receipt_id=?',[receiptId]);
+    if(prior){
+      if(prior.reason!==reason.trim()||prior.staff_id!==staffId)throw Error('Receipt already reversed');
+      await connection.commit();return {success:true};
     }
-    if (amount > balance + 0.5) {
-      throw new Error(`Repayment exceeds outstanding balance of Rs. ${balance.toFixed(2)}`);
-    }
-
-    await addLedgerEntry(connection, {
-      customer_id: customerId,
-      entry_type: 'credit_repaid',
-      credit_delta: -amount,
-      reference_type: 'manual',
-      notes: notes || `Credit repayment of Rs. ${amount}`,
-      created_by: createdBy,
-    });
-
-    await connection.commit();
-    return getCustomerById(customerId);
-  } catch (err) {
-    await connection.rollback();
-    throw err;
-  } finally {
-    connection.release();
-  }
+    const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Colombo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    await connection.query('INSERT INTO credit_receipt_reversals(receipt_id,reason,staff_id,business_date) VALUES(?,?,?,?)',[receiptId,reason.trim(),staffId,date]);
+    await addLedgerEntry(connection,{customer_id:customerId,entry_type:'credit_issued',credit_delta:Number(receipt.amount),reference_type:'credit_receipt_reversal',reference_id:receiptId,notes:reason.trim(),created_by:staffId});
+    await connection.commit();return {success:true};
+  }catch(error){await connection.rollback();throw error}finally{connection.release()}
 }
 
 async function addLedgerEntry(connection, {
@@ -155,5 +187,5 @@ async function addLedgerEntry(connection, {
 module.exports = {
   getAllCustomers, getCustomerById, getCustomerByPhone,
   findOrCreateCustomer, updateCustomer, convertToLoyalty,
-  recordCreditRepayment, addLedgerEntry,
+  recordCreditRepayment, reverseCreditReceipt, addLedgerEntry,
 };

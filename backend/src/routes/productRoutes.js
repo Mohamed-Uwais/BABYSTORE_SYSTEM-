@@ -2,7 +2,23 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const { upload } = require('../middleware/uploadMiddleware');
+router.use(require('../utils/financialVisibility').hideCosts);
+router.use((req,res,next)=>req.method==='GET' ? next() : require('../middleware/authMiddleware').requirePermission('inventory')(req,res,next));
 
+router.get('/billing-variants', async (req, res) => {
+  const db = require('../config/db');
+  const [rows] = await db.query(`SELECT v.id AS variant_id, v.sku, v.barcode, v.variant_label, v.mrp,
+    v.retail_price, v.wholesale_price, v.current_stock, p.name, t.min_quantity, t.tier_price, t.label
+    FROM product_variants v JOIN products p ON p.id=v.product_id
+    LEFT JOIN variant_price_tiers t ON t.variant_id=v.id
+    WHERE p.is_active AND v.is_active ORDER BY p.name,v.id,t.min_quantity`);
+  const variants = new Map();
+  for (const {min_quantity,tier_price,label,...variant} of rows) {
+    if (!variants.has(variant.variant_id)) variants.set(variant.variant_id,{...variant,price_tiers:[]});
+    if (min_quantity) variants.get(variant.variant_id).price_tiers.push({min_quantity,tier_price,label});
+  }
+  res.json({success:true,data:[...variants.values()]});
+});
 router.get('/low-stock', productController.lowStock);
 router.get('/', productController.listProducts);
 router.get('/:id', productController.getProduct);

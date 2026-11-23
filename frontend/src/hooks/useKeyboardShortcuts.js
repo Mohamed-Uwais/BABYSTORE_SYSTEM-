@@ -6,7 +6,7 @@ export default function useKeyboardShortcuts(shortcuts, deps = []) {
     const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
 
     for (const s of shortcuts) {
-      const keyMatch = e.key === s.key || e.code === s.code;
+      const keyMatch = e.key === s.key || (s.code && e.code === s.code);
       if (!keyMatch) continue;
       if (s.ctrl && !e.ctrlKey && !e.metaKey) continue;
       if (!s.ctrl && (e.ctrlKey || e.metaKey) && s.key !== '?') continue;
@@ -17,7 +17,7 @@ export default function useKeyboardShortcuts(shortcuts, deps = []) {
 
       e.preventDefault();
       e.stopPropagation();
-      s.action(e);
+      if (!e.repeat) s.action(e);
       return;
     }
   }, deps);

@@ -94,6 +94,7 @@ exports.publicValidateCoupon = async (req, res, next) => {
           category_id: v?.category_id,
           brand_id: v?.brand_id,
           quantity: ci.qty || ci.quantity || 1,
+        discount_amount:Number(ci.discount_amount||0),
           unit_price: ci.price || ci.unit_price || Number(v?.retail_price || 0),
         };
       });
@@ -142,6 +143,7 @@ exports.calculateCart = async (req, res, next) => {
         category_id: v?.category_id,
         brand_id: v?.brand_id,
         quantity: ci.qty || ci.quantity || 1,
+        discount_amount:Number(ci.discount_amount||0),
         unit_price: ci.price || ci.unit_price || Number(v?.retail_price || 0),
       };
     });

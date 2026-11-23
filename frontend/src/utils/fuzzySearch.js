@@ -59,7 +59,8 @@ export function fuzzySearchProducts(products, query) {
     let skuIndices = null;
 
     // Exact SKU
-    if (sku === q) { rank = 0; skuIndices = [...Array(sku.length).keys()]; }
+    if (barcode && barcode === q) { rank = -1; }
+    else if (sku === q) { rank = 0; skuIndices = [...Array(sku.length).keys()]; }
     // SKU prefix
     else if (sku.startsWith(q)) { rank = 1; skuIndices = [...Array(q.length).keys()]; }
     // Subsequence on SKU

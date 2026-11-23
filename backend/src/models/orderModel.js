@@ -1,3 +1,7 @@
+const fifo = require('../utils/fifo');
+const {paidLines,linkedRefund,cents} = require('../utils/returnValue');
+const allocateTender = require('../utils/allocateTender');
+const applyPromotions = require('../utils/applyPromotions');
 const db = require('../config/db');
 const customerModel = require('./customerModel');
 const { claimRequest, requestHash } = require('../utils/checkoutRequest');
@@ -68,6 +72,13 @@ async function createOrder(payload, transactionConnection = null) {
       throw new Error('At least one payment method is required');
     }
 
+    const externalCOD = channel==='pos' && fulfillment_type==='courier_delivery';
+    if(externalCOD && (!customer_id || !delivery?.courier_id || !delivery?.tracking_number?.trim())) {
+      throw Error('Save a customer and tracking number before finalising an external courier bill');
+    }
+    if(externalCOD && (payments.length!==1 || payments[0].payment_method!=='cod'))throw Error('External courier bills require courier COD');
+    const initialStatus=channel!=='pos'?'pending':(fulfillment_type && fulfillment_type!=='pickup'?'confirmed':'completed');
+
     // --- 1. Validate customer for store_credit / pay_later payments ---
     const usesStoreCredit = payments.some(p => p.payment_method === 'store_credit');
     const usesPayLater = payments.some(p => p.payment_method === 'pay_later');
@@ -107,24 +118,47 @@ async function createOrder(payload, transactionConnection = null) {
     for (const item of items) quantities.set(item.variant_id, (quantities.get(item.variant_id) || 0) + item.quantity);
     for (const item of [...items].sort((a, b) => a.variant_id - b.variant_id)) {
       const [[variant]] = await connection.query(
-        'SELECT current_stock, retail_price, cost_price FROM product_variants WHERE id = ? FOR UPDATE',
+        (payload.coupon_code || channel==='pos') ? 'SELECT v.current_stock,v.retail_price,v.cost_price,v.product_id,p.category_id,p.brand_id FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id = ? FOR UPDATE' : 'SELECT current_stock, retail_price, cost_price FROM product_variants WHERE id = ? FOR UPDATE',
         [item.variant_id]
       );
       if (!variant) throw new Error(`Variant ${item.variant_id} not found`);
       if (variant.current_stock < quantities.get(item.variant_id)) {
         throw new Error(`Insufficient stock for variant ${item.variant_id}: have ${variant.current_stock}, need ${item.quantity}`);
       }
-      item._cost_price = variant.cost_price || 0;
+      if (payload.enforce_catalog_price && Number(item.unit_price) !== Number(variant.retail_price)) {
+        const [[tier]] = await connection.query(
+          'SELECT tier_price,min_quantity FROM variant_price_tiers WHERE variant_id=? AND min_quantity<=? ORDER BY min_quantity DESC LIMIT 1',
+          [item.variant_id,item.quantity]);
+        const expected = tier && Number(tier.tier_price)/Number(tier.min_quantity);
+        if (!tier || Math.abs(expected-Number(item.unit_price))>0.00001) throw Error('Price override requires permission');
+      }
+      Object.assign(item, { product_id: variant.product_id, category_id: variant.category_id, brand_id: variant.brand_id });
+      item._cost_price = null;
     }
 
     // --- 3. Calculate totals ---
     const subtotal = items.reduce((sum, i) => sum + (i.unit_price * i.quantity) - (i.discount_amount || 0), 0);
-    const grand_total = subtotal - discount_total + delivery_fee;
+    const redeemed=Number(payload.redeem_points||0);
+    if(redeemed){
+      if(channel!=='pos'||!customer_id||payload.wholesale||!Number.isSafeInteger(redeemed)||redeemed<1000||redeemed>10000||redeemed>subtotal-discount_total)throw Error('Invalid loyalty redemption');
+      const [[holder]]=await connection.query('SELECT loyalty_points_balance FROM customers WHERE id=? FOR UPDATE',[customer_id]);
+      if(!holder||redeemed>Number(holder.loyalty_points_balance))throw Error('Insufficient points');
+    }
+    const grand_total = subtotal - discount_total - redeemed + delivery_fee;
 
-    const paymentsTotal = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-    if (Math.abs(paymentsTotal - grand_total) > 0.5) {
-      // small tolerance for rounding; adjust if you need exact-cent matching
-      throw new Error(`Payment total (${paymentsTotal}) does not match order total (${grand_total})`);
+    const retainedPayments = allocateTender(payments, grand_total - (transactionConnection ? payload.applied_return_credit||0 : 0));
+    let coupon = null;
+    let snapshots = null;
+    if (channel==='pos'||payload.promotion_result) {
+      const result = channel==='pos' ? await applyPromotions(items,payload.coupon_code) : payload.promotion_result;
+      if(result.couponError || cents(discount_total)<cents(result.totalDiscount)) throw Error('Discount changed. Review the bill before payment.');
+      coupon=result.appliedPromotions.find(p=>p.promo_type==='coupon_code');
+      const manual=cents(discount_total)-cents(result.totalDiscount);
+      const lines=items.map((item,index)=>({id:index,line_total:(cents(item.unit_price*item.quantity)-cents(item.discount_amount||0)-result.allocations[index].promotion-result.allocations[index].coupon)/100}));
+      if(manual>lines.reduce((sum,line)=>sum+cents(line.line_total),0))throw Error('Discount exceeds merchandise value');
+      const paid=paidLines(lines,manual/100);
+      const postLoyalty=paidLines(lines.map(line=>({id:line.id,line_total:paid.get(line.id)/100})),redeemed);
+      snapshots=lines.map((line,index)=>({...result.allocations[index],manual:cents(items[index].discount_amount||0)+cents(line.line_total)-paid.get(index),loyalty:paid.get(index)-postLoyalty.get(index),paid:postLoyalty.get(index)}));
     }
 
     // --- 4. Insert order ---
@@ -135,24 +169,28 @@ async function createOrder(payload, transactionConnection = null) {
          delivery_fee, grand_total, fulfillment_type, delivery_address, delivery_zone_id, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [order_number, channel, customer_id || null, cashier_id || null,
-       channel === 'pos' ? 'completed' : 'pending', subtotal, discount_total,
+       initialStatus, subtotal, discount_total,
        delivery_fee, grand_total, fulfillment_type || 'pickup', delivery_address || null,
        delivery_zone_id || null, notes || null]
     );
     const orderId = orderResult.insertId;
 
+    if (coupon) await connection.query('UPDATE orders SET receipt_coupon_code=?,receipt_coupon_amount=? WHERE id=?',[coupon.coupon_code,coupon.discount,orderId]);
+
     // --- 5. Insert order_items; deduct stock only for POS (website/chatbot wait for acceptance) ---
     const isPOS = channel === 'pos';
-    for (const item of items) {
+    for (const [index,item] of items.entries()) {
       const line_total = (item.unit_price * item.quantity) - (item.discount_amount || 0);
 
-      await connection.query(
+      const [insertedItem] = await connection.query(
         `INSERT INTO order_items (order_id, variant_id, quantity, unit_price, discount_amount, line_total, cost_price_snapshot)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [orderId, item.variant_id, item.quantity, item.unit_price, item.discount_amount || 0, line_total, item._cost_price]
       );
 
+      if(snapshots) await connection.query('UPDATE order_items SET refund_paid_amount=?,discount_allocation=? WHERE id=?',[snapshots[index].paid/100,JSON.stringify(snapshots[index]),insertedItem.insertId]);
       if (isPOS) {
+        await fifo.consume(connection,insertedItem.insertId,item.variant_id,item.quantity);
         await connection.query(
           'UPDATE product_variants SET current_stock = current_stock - ? WHERE id = ?',
           [item.quantity, item.variant_id]
@@ -166,17 +204,18 @@ async function createOrder(payload, transactionConnection = null) {
     }
 
     // --- 6. Insert payments ---
-    for (const p of payments) {
+    for (const p of retainedPayments) {
       await connection.query(
-        `INSERT INTO order_payments (order_id, payment_method, amount, reference_note)
-         VALUES (?, ?, ?, ?)`,
-        [orderId, p.payment_method, p.amount, p.reference_note || null]
+        `INSERT INTO order_payments (order_id, payment_method, amount, reference_note, cash_tendered)
+         VALUES (?, ?, ?, ?, ?)`,
+        [orderId, p.payment_method, p.amount, p.reference_note || null, p.cash_tendered]
       );
     }
 
     // --- 7. Loyalty points + credit ledger (only for POS orders with registered customers) ---
     if (customer_id && isPOS) {
-      const pointsEarned = Math.floor(grand_total / 100); // 1 point per 100 LKR - tune as needed
+      if(redeemed)await customerModel.addLedgerEntry(connection,{customer_id,entry_type:'points_redeemed',points_delta:-redeemed,reference_type:'order',reference_id:orderId,created_by:cashier_id,notes:'Bill redemption'});
+      const pointsEarned = payload.wholesale ? 0 : Math.floor((cents(grand_total)-cents(delivery_fee)-cents(payload.applied_return_credit||0))/15000);
 
       if (pointsEarned > 0) {
         await customerModel.addLedgerEntry(connection, {
@@ -234,12 +273,11 @@ async function createOrder(payload, transactionConnection = null) {
     }
 
     // --- 8b. Courier credit: Koombiyo/Fardar collect COD, so they owe us the product value ---
-    const isCourierCOD = isPOS && fulfillment_type === 'courier_delivery' && courierCode && ['koombiyo', 'fardar'].includes(courierCode);
+    const isCourierCOD = externalCOD && courierCode;
     if (isCourierCOD) {
       const courierNames = { koombiyo: 'Koombiyo Delivery', fardar: 'Fardar Express' };
-      const courierPhones = { koombiyo: 'KOOMBIYO', fardar: 'FARDAR' };
-      const cName = courierNames[courierCode];
-      const cPhone = courierPhones[courierCode];
+      const cName = courierNames[courierCode] || courierCode;
+      const cPhone = courierCode.toUpperCase();
 
       const [[existingCourier]] = await connection.query(
         'SELECT id FROM customers WHERE phone = ?', [cPhone]
@@ -255,7 +293,7 @@ async function createOrder(payload, transactionConnection = null) {
         courierCustomerId = ins.insertId;
       }
 
-      const productValue = subtotal - discount_total;
+      const productValue = Math.max(0,grand_total-delivery_fee-(payload.applied_return_credit||0));
       if (productValue > 0) {
         await customerModel.addLedgerEntry(connection, {
           customer_id: courierCustomerId,
@@ -270,7 +308,6 @@ async function createOrder(payload, transactionConnection = null) {
     }
 
     // --- 9. Log initial status in history ---
-    const initialStatus = channel === 'pos' ? 'completed' : 'pending';
     await connection.query(
       'INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)',
       [orderId, initialStatus, cashier_id || null, 'Order created']
@@ -329,7 +366,13 @@ async function getOrderById(id) {
      WHERE r.order_id = ?`, [id]
   );
 
-  return { ...order, items, payments, delivery: delivery[0] || null, returns };
+
+  for(const item of items){
+    const refunded = returns.filter(r=>r.order_item_id===item.id).reduce((sum,r)=>sum+cents(r.refund_amount),0);
+    item.remaining_refund_cents = item.refund_paid_amount==null && Number(order.discount_total)>0 ? null : Math.max(0,cents(item.refund_paid_amount ?? item.line_total)-refunded);
+  }
+  const [credits]=await db.query('SELECT original_order_id,replacement_order_id,approved_amount,applied_amount,residual_amount,residual_method FROM return_transactions WHERE original_order_id=? OR replacement_order_id=?',[id,id]);
+  return { ...order, credits, items, payments, delivery: delivery[0] || null, returns };
 }
 
 async function getAllOrders({ channel, status, limit = 50 } = {}) {
@@ -361,15 +404,48 @@ async function getBestSellers(limit = 12) {
   return rows;
 }
 
+async function reconcileReturnPoints(connection,order,staff) {
+  if(!order.customer_id)return;
+  const [lines]=await connection.query(`SELECT i.quantity,i.refund_paid_amount,i.discount_allocation,
+      (SELECT COALESCE(SUM(r.quantity),0) FROM order_returns r WHERE r.order_item_id=i.id) AS returned,
+      (SELECT COALESCE(SUM(r.refund_amount),0) FROM order_returns r WHERE r.order_item_id=i.id) AS refunded
+    FROM order_items i WHERE i.order_id=?`,[order.id]);
+  const paid=lines.reduce((n,l)=>n+cents(l.refund_paid_amount||0),0);
+  const refunded=lines.reduce((n,l)=>n+cents(l.refunded),0);
+  const restore=Math.floor(lines.reduce((n,l)=>n+Math.round((l.discount_allocation?.loyalty||0)*l.returned/l.quantity),0)/100);
+  const [[ledger]]=await connection.query(`SELECT
+    COALESCE(SUM(CASE WHEN reference_type='order' AND points_delta>0 THEN points_delta ELSE 0 END),0) AS earned,
+    COALESCE(SUM(CASE WHEN reference_type='refund' AND points_delta<0 THEN -points_delta ELSE 0 END),0) AS reversed,
+    COALESCE(SUM(CASE WHEN reference_type='refund' AND points_delta>0 THEN points_delta ELSE 0 END),0) AS restored
+    FROM customer_ledger WHERE reference_id=? AND customer_id=?`,[order.id,order.customer_id]);
+  const remove=paid ? Math.max(0,Math.floor(Number(ledger.earned)*Math.min(refunded,paid)/paid)-Number(ledger.reversed)):0;
+  for(const delta of [-remove,Math.max(0,restore-Number(ledger.restored))]){
+    if(delta)await customerModel.addLedgerEntry(connection,{customer_id:order.customer_id,entry_type:delta>0?'points_earned':'points_redeemed',points_delta:delta,reference_type:'refund',reference_id:order.id,created_by:staff,notes:'Original bill points reconciliation'});
+  }
+}
+
+async function remainingRefund(connection, order, item, returned, refundedValue, qty) {
+  if(Number(order.discount_total)>0 && item.refund_paid_amount==null) throw Error('Missing original discount allocation. An owner must resolve the bill before a refund.');
+  const paid = cents(item.refund_paid_amount ?? item.line_total);
+  return linkedRefund(paid-cents(refundedValue||0),Number(item.quantity)-Number(returned),Number(qty));
+}
+
 async function processRefund(orderId, refundData, processedBy) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
 
-    const { order_item_id, quantity, reason, refund_amount, restock } = refundData;
+    const { order_item_id, quantity, reason, restock } = refundData;
 
-    const [[order]] = await connection.query('SELECT id, status, customer_id, grand_total FROM orders WHERE id = ? FOR UPDATE', [orderId]);
+    const [[order]] = await connection.query('SELECT id, status, customer_id, grand_total, discount_total FROM orders WHERE id = ? FOR UPDATE', [orderId]);
     if (!order) throw new Error('Order not found');
+    const key=refundData.submission_key,hash=requestHash({orderId,refundData});
+    if(key){
+      await connection.query('INSERT INTO return_transactions(submission_key,payload_hash,original_order_id,processed_by) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE submission_key=submission_key',[key,hash,orderId,processedBy]);
+      const [[prior]]=await connection.query('SELECT result,payload_hash FROM return_transactions WHERE submission_key=? FOR UPDATE',[key]);
+      if(prior.payload_hash!==hash)throw Error('Refund request changed on retry');
+      if(prior.result){await connection.commit();return prior.result}
+    }
     if (['cancelled', 'refunded'].includes(order.status)) {
       throw new Error(`Cannot refund an order with status "${order.status}"`);
     }
@@ -380,24 +456,24 @@ async function processRefund(orderId, refundData, processedBy) {
     );
     if (!item) throw new Error('Order item not found');
 
-    const [[{ already_returned }]] = await connection.query(
-      'SELECT COALESCE(SUM(quantity), 0) AS already_returned FROM order_returns WHERE order_item_id = ?',
+    const [[{ already_returned, refunded_value }]] = await connection.query(
+      'SELECT COALESCE(SUM(quantity), 0) AS already_returned, COALESCE(SUM(refund_amount),0) AS refunded_value FROM order_returns WHERE order_item_id = ?',
       [order_item_id]
     );
     const maxReturnable = item.quantity - already_returned;
     if (quantity > maxReturnable) {
       throw new Error(`Can only return ${maxReturnable} more of this item (${already_returned} already returned)`);
     }
-    if (refund_amount > item.line_total) {
-      throw new Error(`Refund amount cannot exceed line total (${item.line_total})`);
-    }
+    const refund_amount = await remainingRefund(connection,order,item,already_returned,refunded_value,quantity);
+    if(refundData.refund_amount != null && cents(refundData.refund_amount)!==cents(refund_amount)) throw Error('Refund value changed; reload the original bill');
 
-    await connection.query(
+    const [insertedReturn] = await connection.query(
       `INSERT INTO order_returns (order_id, order_item_id, quantity, reason, refund_amount, restock, processed_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [orderId, order_item_id, quantity, reason || null, refund_amount, restock ? 1 : 0, processedBy]
     );
 
+    await fifo.returnCost(connection,item,quantity,restock,insertedReturn.insertId);
     if (restock) {
       await connection.query(
         'UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?',
@@ -419,23 +495,11 @@ async function processRefund(orderId, refundData, processedBy) {
     const newStatus = total_returned_qty >= total_items_qty ? 'refunded' : 'partially_refunded';
     await connection.query('UPDATE orders SET status = ? WHERE id = ?', [newStatus, orderId]);
 
-    if (order.customer_id) {
-      const pointsToDeduct = Math.floor(refund_amount / 100);
-      if (pointsToDeduct > 0) {
-        await customerModel.addLedgerEntry(connection, {
-          customer_id: order.customer_id,
-          entry_type: 'points_redeemed',
-          points_delta: -pointsToDeduct,
-          reference_type: 'refund',
-          reference_id: orderId,
-          notes: `Points deducted for refund on order #${orderId}`,
-          created_by: processedBy,
-        });
-      }
-    }
-
+    await reconcileReturnPoints(connection,order,processedBy);
+    const result={success:true,new_status:newStatus};
+    if(key)await connection.query("UPDATE return_transactions SET approved_amount=?,applied_amount=0,residual_amount=?,residual_method='refund',result=? WHERE submission_key=?",[refund_amount,refund_amount,JSON.stringify(result),key]);
     await connection.commit();
-    return { success: true, new_status: newStatus };
+    return result;
   } catch (error) {
     try { await connection.rollback(); } catch { /* preserve the original failure */ }
     if (!error.code && !error.status) error.status = 400;
@@ -466,7 +530,7 @@ async function processReturnExchange(data, processedBy, transactionConnection = 
 
     const { original_order_id, return_items, refund_method, customer_id } = data;
 
-    const [[order]] = await connection.query('SELECT id, status, customer_id FROM orders WHERE id = ? FOR UPDATE', [original_order_id]);
+    const [[order]] = await connection.query('SELECT id, status, customer_id, discount_total FROM orders WHERE id = ? FOR UPDATE', [original_order_id]);
     if (!order) throw new Error('Original order not found');
     if (['cancelled', 'refunded'].includes(order.status)) {
       throw new Error(`Cannot process returns on an order with status "${order.status}"`);
@@ -483,8 +547,8 @@ async function processReturnExchange(data, processedBy, transactionConnection = 
       );
       if (!item) throw new Error(`Order item ${ri.order_item_id} not found`);
 
-      const [[{ already_returned }]] = await connection.query(
-        'SELECT COALESCE(SUM(quantity), 0) AS already_returned FROM order_returns WHERE order_item_id = ?',
+      const [[{ already_returned, refunded_value }]] = await connection.query(
+        'SELECT COALESCE(SUM(quantity), 0) AS already_returned, COALESCE(SUM(refund_amount),0) AS refunded_value FROM order_returns WHERE order_item_id = ?',
         [ri.order_item_id]
       );
       const maxReturnable = item.quantity - already_returned;
@@ -492,16 +556,17 @@ async function processReturnExchange(data, processedBy, transactionConnection = 
         throw new Error(`Can only return ${maxReturnable} more of ${item.product_name} ${item.variant_label}`);
       }
 
-      const perUnitPrice = item.line_total / item.quantity;
-      const refundAmount = parseFloat((perUnitPrice * ri.quantity).toFixed(2));
+      const refundAmount = await remainingRefund(connection,order,item,already_returned,refunded_value,ri.quantity);
       totalRefundAmount += refundAmount;
 
-      await connection.query(
+      const [insertedReturn] = await connection.query(
         `INSERT INTO order_returns (order_id, order_item_id, quantity, reason, refund_amount, restock, processed_by)
-         VALUES (?, ?, ?, ?, ?, 1, ?)`,
-        [original_order_id, ri.order_item_id, ri.quantity, ri.reason || 'Customer return', refundAmount, processedBy]
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [original_order_id, ri.order_item_id, ri.quantity, ri.reason || 'Customer return', refundAmount, ri.restock===false?0:1,processedBy]
       );
 
+      await fifo.returnCost(connection,item,ri.quantity,ri.restock!==false,insertedReturn.insertId);
+      if(ri.restock===false)continue;
       await connection.query(
         'UPDATE product_variants SET current_stock = current_stock + ? WHERE id = ?',
         [ri.quantity, item.variant_id]
@@ -522,7 +587,7 @@ async function processReturnExchange(data, processedBy, transactionConnection = 
     const newStatus = total_returned_qty >= total_items_qty ? 'refunded' : 'partially_refunded';
     await connection.query('UPDATE orders SET status = ? WHERE id = ?', [newStatus, original_order_id]);
 
-    const effectiveCustomerId = customer_id || order.customer_id;
+    const effectiveCustomerId = order.customer_id;
 
     if (refund_method === 'store_credit' && effectiveCustomerId) {
       await customerModel.addLedgerEntry(connection, {
@@ -536,21 +601,7 @@ async function processReturnExchange(data, processedBy, transactionConnection = 
       });
     }
 
-    if (effectiveCustomerId) {
-      const pointsToDeduct = Math.floor(totalRefundAmount / 100);
-      if (pointsToDeduct > 0) {
-        await customerModel.addLedgerEntry(connection, {
-          customer_id: effectiveCustomerId,
-          entry_type: 'points_redeemed',
-          points_delta: -pointsToDeduct,
-          reference_type: 'refund',
-          reference_id: original_order_id,
-          notes: `Points deducted for return on order #${original_order_id}`,
-          created_by: processedBy,
-        });
-      }
-    }
-
+    await reconcileReturnPoints(connection,order,processedBy);
     if (!transactionConnection) await connection.commit();
     return { success: true, refund_total: totalRefundAmount, refund_method, new_status: newStatus };
   } catch (error) {
@@ -564,7 +615,7 @@ async function processReturnExchange(data, processedBy, transactionConnection = 
 
 // The return and replacement must either both commit or both roll back.
 async function processExchange(data, processedBy) {
-  if (!data.replacement) return processReturnExchange(data, processedBy);
+  if (!data.replacement && !data.submission_key) return processReturnExchange(data, processedBy);
   const connection = await db.getConnection();
   let numberLock = false;
   try {
@@ -572,10 +623,32 @@ async function processExchange(data, processedBy) {
     if (Number(lock.acquired) !== 1) throw new Error('Checkout is busy. Please retry.');
     numberLock = true;
     await connection.beginTransaction();
-    const returned = await processReturnExchange(data, processedBy, connection);
-    const replacement = await createOrder({ ...data.replacement, channel: 'pos', cashier_id: processedBy, request_key: null }, connection);
+    const key=data.submission_key;
+    if(key){
+      const hash=requestHash(data);
+      await connection.query('INSERT INTO return_transactions(submission_key,payload_hash,original_order_id,processed_by) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE submission_key=submission_key',[key,hash,data.original_order_id,processedBy]);
+      const [[prior]]=await connection.query('SELECT payload_hash,result FROM return_transactions WHERE submission_key=? FOR UPDATE',[key]);
+      if(prior.payload_hash!==hash)throw Error('Return request changed on retry');
+      if(prior.result){await connection.commit();return prior.result}
+    }
+    const returned = await processReturnExchange({...data,refund_method:'none'}, processedBy, connection);
+    const next=data.replacement;
+    const due=next ? cents(next.items.reduce((sum,i)=>sum+i.unit_price*i.quantity-(i.discount_amount||0),0)-(next.discount_total||0)-(next.redeem_points||0)+(Number(next.delivery_fee)||0)) : 0;
+    if(due<0)throw Error('Invalid replacement value');
+    const applied= Math.min(cents(returned.refund_total),due)/100;
+    const residual=(cents(returned.refund_total)-cents(applied))/100;
+    const method=residual ? data.refund_method : 'none';
+    if(residual && !['store_credit','cash'].includes(method))throw Error('Select a refund method for the unused return credit');
+    if(method==='store_credit'){
+      const [[original]]=await connection.query('SELECT customer_id FROM orders WHERE id=?',[data.original_order_id]);
+      if(!original.customer_id)throw Error('Store credit requires the original customer');
+      await customerModel.addLedgerEntry(connection,{customer_id:original.customer_id,entry_type:'credit_repaid',credit_delta:-residual,reference_type:'order',reference_id:data.original_order_id,created_by:processedBy,notes:'Unused return credit'});
+    }
+    const replacement=next ? await createOrder({...next,channel:'pos',cashier_id:processedBy,request_key:null,enforce_catalog_price:data.enforce_catalog_price,applied_return_credit:applied},connection) : null;
+    const result={...returned,refund_method:method,applied_credit:applied,residual_amount:residual,replacement};
+    if(key)await connection.query('UPDATE return_transactions SET replacement_order_id=?,approved_amount=?,applied_amount=?,residual_amount=?,residual_method=?,result=? WHERE submission_key=?',[replacement?.orderId||null,returned.refund_total,applied,residual,method,JSON.stringify(result),key]);
     await connection.commit();
-    return { ...returned, replacement };
+    return result;
   } catch (error) {
     try { await connection.rollback(); } catch { /* preserve original error */ }
     throw error;
@@ -604,16 +677,21 @@ async function searchOrderForReturn(query) {
 
 async function getOrderItemsForReturn(orderId) {
   const [items] = await db.query(
-    `SELECT oi.id AS order_item_id, oi.variant_id, oi.quantity, oi.unit_price, oi.line_total,
+    `SELECT oi.id AS order_item_id, oi.variant_id, oi.quantity, oi.unit_price, oi.line_total, oi.refund_paid_amount,
             pv.variant_label, pv.sku, p.name AS product_name,
-            COALESCE((SELECT SUM(r.quantity) FROM order_returns r WHERE r.order_item_id = oi.id), 0) AS already_returned
+            COALESCE((SELECT SUM(r.quantity) FROM order_returns r WHERE r.order_item_id = oi.id), 0) AS already_returned,
+            COALESCE((SELECT SUM(r.refund_amount) FROM order_returns r WHERE r.order_item_id=oi.id),0) AS refunded_value
      FROM order_items oi
      JOIN product_variants pv ON pv.id = oi.variant_id
      JOIN products p ON p.id = pv.product_id
      WHERE oi.order_id = ?`,
     [orderId]
   );
-  return items.map(i => ({ ...i, returnable: i.quantity - i.already_returned }));
+  const [[bill]]=await db.query('SELECT discount_total FROM orders WHERE id=?',[orderId]);
+
+  return items.map(i => ({ ...i, returnable: i.quantity - i.already_returned,
+    remaining_refund_cents: i.refund_paid_amount==null && Number(bill?.discount_total)>0 ? null : Math.max(0,cents(i.refund_paid_amount ?? i.line_total)-cents(i.refunded_value)) }));
+
 }
 
 async function acceptOrder(orderId, acceptedBy) {
@@ -622,7 +700,7 @@ async function acceptOrder(orderId, acceptedBy) {
     await connection.beginTransaction();
 
     const [[order]] = await connection.query(
-      'SELECT id, status, order_number, customer_id, grand_total FROM orders WHERE id = ? FOR UPDATE', [orderId]
+      'SELECT id, status, order_number, customer_id, grand_total, delivery_fee FROM orders WHERE id = ? FOR UPDATE', [orderId]
     );
     if (!order) throw new Error('Order not found');
     if (order.status === 'confirmed') { await connection.commit(); return { success: true }; }
@@ -646,10 +724,12 @@ async function acceptOrder(orderId, acceptedBy) {
       if (!variant || variant.current_stock < item.quantity) {
         throw new Error(`Insufficient stock for variant ${item.variant_id}: have ${variant?.current_stock || 0}, need ${item.quantity}`);
       }
-      await connection.query(
-        'UPDATE product_variants SET current_stock = current_stock - ? WHERE id = ?',
-        [item.quantity, item.variant_id]
-      );
+      if(Number(movement.deducted)!==0)throw Error('Partial legacy deduction requires stock reconciliation');
+      const [lines]=await connection.query('SELECT id,quantity FROM order_items WHERE order_id=? AND variant_id=? ORDER BY id',[orderId,item.variant_id]);
+      for (const line of lines) {
+        await fifo.consume(connection,line.id,item.variant_id,line.quantity);
+        await connection.query('UPDATE product_variants SET current_stock = current_stock - ? WHERE id = ?', [line.quantity,item.variant_id]);
+      }
       await connection.query(
         `INSERT INTO stock_movements (variant_id, change_qty, reason, reference_type, reference_id, created_by)
          VALUES (?, ?, 'sale', 'order', ?, ?)`,
@@ -664,7 +744,7 @@ async function acceptOrder(orderId, acceptedBy) {
     );
 
     if (order.customer_id) {
-      const pointsEarned = Math.floor(order.grand_total / 100);
+      const pointsEarned = Math.floor((cents(order.grand_total)-cents(order.delivery_fee||0))/15000);
       if (pointsEarned > 0) {
         await customerModel.addLedgerEntry(connection, {
           customer_id: order.customer_id, entry_type: 'points_earned', points_delta: pointsEarned,
@@ -725,7 +805,7 @@ async function getPendingOrders() {
   `);
   for (const order of orders) {
     const [items] = await db.query(
-      `SELECT oi.variant_id, oi.quantity, oi.unit_price, oi.line_total,
+      `SELECT oi.variant_id, oi.quantity, oi.unit_price, oi.line_total, oi.refund_paid_amount,
               pv.variant_label, pv.sku, pv.current_stock, p.name AS product_name
        FROM order_items oi
        JOIN product_variants pv ON pv.id = oi.variant_id

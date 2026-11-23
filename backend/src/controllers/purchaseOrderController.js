@@ -23,7 +23,9 @@ async function getPO(req, res) {
 
 async function createPO(req, res) {
   try {
-    const po = await poModel.createPO({ ...req.body, created_by: req.user?.id });
+    const key=req.headers['idempotency-key'];
+    if(key&&!/^[-\w]{8,80}$/.test(key))return res.status(400).json({message:'Invalid submission key'});
+    const po = await poModel.createPO({ ...req.body, created_by: req.user.id,submission_key:key?req.user.id+':'+key:null });
     res.status(201).json({ success: true, data: po });
   } catch (error) {
     console.error(error);
@@ -73,7 +75,7 @@ async function markShipped(req, res) {
 
 async function markReceived(req, res) {
   try {
-    const po = await poModel.markReceived(req.params.id, { created_by: req.user?.id });
+    const po = await poModel.markReceived(req.params.id, { created_by: req.user?.id, preview:req.method === 'POST', targets:req.body?.targets,charges:req.body?.charges });
     res.json({ success: true, data: po });
   } catch (error) {
     console.error(error);

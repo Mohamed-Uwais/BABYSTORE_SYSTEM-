@@ -10,6 +10,9 @@ export default function StockToggle() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState({});
+  const [reason, setReason] = useState('');
+  const [unitCost, setUnitCost] = useState('');
+  const [requests] = useState(() => new Map());
   const { addToast } = useToast();
 
   useEffect(() => { fetchVariants(); }, []);
@@ -28,11 +31,15 @@ export default function StockToggle() {
   }, [variants, search]);
 
   async function handleToggle(variant, newStock) {
-    const val = parseInt(newStock, 10);
-    if (isNaN(val) || val < 0) return;
+    const val = Number(newStock);
+    if (!Number.isSafeInteger(val) || val < 0 || val === Number(variant.current_stock) || saving[variant.variant_id]) return;
     setSaving(s => ({ ...s, [variant.variant_id]: true }));
     try {
-      await client.post('/inventory/stock-toggle', { variant_id: variant.variant_id, new_stock: val });
+      const body={variant_id:variant.variant_id,new_stock:val,expected_stock:Number(variant.current_stock),reason,unit_cost:val>variant.current_stock?unitCost:null};
+      const fingerprint=JSON.stringify(body);
+      if(!requests.has(fingerprint))requests.set(fingerprint,crypto.randomUUID());
+      await client.post('/inventory/stock-toggle', {...body,submission_key:requests.get(fingerprint)});
+      requests.delete(fingerprint);
       setVariants(prev => prev.map(v =>
         v.variant_id === variant.variant_id ? { ...v, current_stock: val } : v
       ));
@@ -51,7 +58,7 @@ export default function StockToggle() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900 dark:text-white">Quick Stock</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Tap to adjust stock levels</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Audited stock counts with FIFO batch movements</p>
             </div>
           </div>
           <input
@@ -61,6 +68,8 @@ export default function StockToggle() {
             onChange={e => setSearch(e.target.value)}
             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-brand-500 dark:focus:ring-brand-900/30"
           />
+          <label className="block text-sm">Count reason / evidence reference<input value={reason} maxLength={500} onChange={e=>setReason(e.target.value)} className="block w-full rounded border p-2 dark:bg-slate-900" /></label>
+          <label className="block text-sm">Actual unit cost for added units<input type="number" min="0" step="0.01" value={unitCost} onChange={e=>setUnitCost(e.target.value)} className="block w-full rounded border p-2 dark:bg-slate-900" /></label>
         </div>
         <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 pb-4 pt-4">
 
@@ -101,8 +110,10 @@ export default function StockToggle() {
                     <input
                       type="number"
                       min="0"
-                      value={v.current_stock}
-                      onChange={e => handleToggle(v, e.target.value)}
+                      key={`${v.variant_id}:${v.current_stock}`}
+                      defaultValue={v.current_stock}
+                      aria-label={`Count for ${v.sku}; press Enter to save`}
+                      onKeyDown={e => { if(e.key==='Enter')handleToggle(v,e.currentTarget.value); }}
                       className={`h-10 w-16 rounded-lg border text-center font-mono text-sm font-semibold outline-none transition ${
                         v.current_stock <= 5
                           ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400'

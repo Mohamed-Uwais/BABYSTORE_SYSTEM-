@@ -30,7 +30,7 @@ async function protect(req, res, next) {
 
 function restrictTo(...roles) {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user || !(roles.includes(req.user.role)||(req.user.role==='admin'&&roles.includes('owner')))) {
       return res.status(403).json({ success: false, message: 'You do not have permission to perform this action' });
     }
     next();
@@ -42,7 +42,7 @@ function requirePermission(...perms) {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Not authenticated' });
     }
-    if (req.user.role === 'owner') return next();
+    if (['owner','admin'].includes(req.user.role)) return next();
     const has = perms.some(p => req.user.permissions?.includes(p));
     if (!has) {
       return res.status(403).json({ success: false, message: 'You do not have permission to access this resource' });

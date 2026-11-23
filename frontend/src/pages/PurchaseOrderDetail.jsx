@@ -1,3 +1,4 @@
+import PurchaseFinance from '../components/PurchaseFinance';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -27,6 +28,10 @@ export default function PurchaseOrderDetail() {
   const [po, setPo] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [charges,setCharges]=useState([]);
+  const [receiveNow,setReceiveNow] = useState({});
+  const [preview,setPreview] = useState(null);
+  useEffect(()=>setPreview(null),[charges,receiveNow,id]);
   const [transportCharge, setTransportCharge] = useState('0');
   const [costs, setCosts] = useState({});
 
@@ -47,6 +52,7 @@ export default function PurchaseOrderDetail() {
     try {
       const res = await client.get(`/purchase-orders/${id}`);
       setPo(res.data.data);
+      setCosts(Object.fromEntries(res.data.data.items.map(i=>[i.id,i.unit_cost_price??''])));
       setEditing(false);
       setEditingCosts(false);
     } catch (err) { setError(err.response?.data?.message ?? 'Could not load purchase order'); }
@@ -54,11 +60,11 @@ export default function PurchaseOrderDetail() {
 
   function startEditPlaced() {
     setEditSupplier(String(po.supplier_id));
-    setEditItems(po.items.map(it => ({ variant_id: it.variant_id, quantity: it.quantity, label: `${it.product_name} · ${it.variant_label}` })));
+    setEditItems(po.items.map(it => ({ variant_id: it.variant_id, quantity: it.quantity, unit_cost_price: it.unit_cost_price, label: `${it.product_name} · ${it.variant_label}` })));
     setEditing(true);
     Promise.all([
       client.get('/suppliers'),
-      client.get('/products'),
+      client.get('/purchase-orders/variants'),
     ]).then(([s, p]) => {
       setSuppliers(s.data.data);
       const variants = [];
@@ -71,7 +77,7 @@ export default function PurchaseOrderDetail() {
 
   function startEditCosts() {
     const c = {};
-    for (const it of po.items) c[it.id] = String(it.unit_cost_price || 0);
+    for (const it of po.items) c[it.id] = String(it.unit_cost_price ?? '');
     setEditCosts(c);
     setEditTransport(String(po.transport_charge || 0));
     setEditingCosts(true);
@@ -82,7 +88,7 @@ export default function PurchaseOrderDetail() {
     try {
       await client.put(`/purchase-orders/${id}`, {
         supplier_id: Number(editSupplier),
-        items: editItems.map(it => ({ variant_id: it.variant_id, quantity: Number(it.quantity) })),
+        items: editItems.map(it => ({ variant_id: it.variant_id, quantity: Number(it.quantity), unit_cost_price: it.unit_cost_price })),
       });
       toast.success('Purchase order updated');
       await load();
@@ -95,7 +101,7 @@ export default function PurchaseOrderDetail() {
     try {
       await client.patch(`/purchase-orders/${id}/costs`, {
         transport_charge: parseFloat(editTransport) || 0,
-        items: po.items.map(it => ({ item_id: it.id, unit_cost_price: parseFloat(editCosts[it.id]) || 0 })),
+        items: po.items.map(it => ({ item_id: it.id, unit_cost_price: editCosts[it.id]===''?null:Number(editCosts[it.id]) })),
       });
       toast.success('Costs updated');
       await load();
@@ -108,9 +114,9 @@ export default function PurchaseOrderDetail() {
     try {
       await client.patch(`/purchase-orders/${id}/pay`, {
         transport_charge: parseFloat(transportCharge) || 0,
-        items: po.items.map((it) => ({ item_id: it.id, unit_cost_price: parseFloat(costs[it.id]) || 0 })),
+        items: po.items.map((it) => ({ item_id: it.id, unit_cost_price: costs[it.id]===''?null:Number(costs[it.id]) })),
       });
-      toast.success('Payment confirmed');
+      toast.success('Invoice costs confirmed');
       await load();
     } catch (err) { setError(err.response?.data?.message ?? 'Could not mark as paid'); }
     finally { setBusy(false); }
@@ -123,9 +129,16 @@ export default function PurchaseOrderDetail() {
     finally { setBusy(false); }
   }
 
-  async function doReceive() {
+  async function doReceive(previewOnly=false) {
     setError(''); setBusy(true);
-    try { await client.patch(`/purchase-orders/${id}/receive`); toast.success('Stock received and updated'); await load(); }
+    try { const targets = Object.fromEntries(po.items.map(item=>[item.id, Number(item.received_quantity)+Number(receiveNow[item.id]||0)]));
+      const payload={targets,charges:charges.map(c=>({...c,cents:Math.round(Number(c.amount)*100)}))};
+      if (previewOnly) {
+        const response=await client.post(`/purchase-orders/${id}/receipt-preview`,payload);
+        setPreview(response.data.data.lines);
+        return;
+      }
+      await client.patch(`/purchase-orders/${id}/receive`,payload);setReceiveNow({});setCharges([]); toast.success('Stock received and updated'); await load(); }
     catch (err) { setError(err.response?.data?.message ?? 'Could not mark as received'); }
     finally { setBusy(false); }
   }
@@ -176,7 +189,7 @@ export default function PurchaseOrderDetail() {
                 <p className="text-sm text-slate-500 dark:text-slate-400">{po.supplier_name}{po.supplier_phone && ` · ${po.supplier_phone}`}</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[po.status]}`}>{po.status}</span>
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[po.status]}`}>{po.status === 'paid' ? 'Costs confirmed' : po.status}</span>
                 {canEdit && !editing && !editingCosts && (
                   <button onClick={po.status === 'placed' ? startEditPlaced : startEditCosts}
                     className="rounded-xl border border-brand-200 px-3 py-1 text-xs font-medium text-brand-600 transition hover:bg-brand-50 dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-900/20">
@@ -292,7 +305,7 @@ export default function PurchaseOrderDetail() {
 
           {!editing && !editingCosts && po.status === 'placed' && (
             <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Mark as paid</h2>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Confirm supplier invoice costs</h2>
               <form onSubmit={submitPay} className="space-y-3">
                 {po.items.map((it) => (
                   <div key={it.id} className="flex items-center justify-between gap-3">
@@ -306,7 +319,7 @@ export default function PurchaseOrderDetail() {
                   <input type="number" step="0.01" value={transportCharge} onChange={(e) => setTransportCharge(e.target.value)} className={`${ic} w-32 text-right font-mono`} />
                 </div>
                 <button type="submit" disabled={busy}
-                  className="w-full rounded-xl bg-brand-600 py-2 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50">Confirm payment</button>
+                  className="w-full rounded-xl bg-brand-600 py-2 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50">Confirm invoice costs</button>
               </form>
             </div>
           )}
@@ -317,10 +330,35 @@ export default function PurchaseOrderDetail() {
           )}
 
           {!editing && !editingCosts && po.status === 'shipped' && (
-            <button onClick={doReceive} disabled={busy}
-              className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50">Mark as received (adds stock)</button>
+            <section className="space-y-2"><h2>Receive delivery</h2>
+            {po.items.map(item=><label key={item.id} className="block">{item.product_name} · {item.sku} · {Number(item.received_quantity)} of {item.quantity} received
+              <input className={ic} aria-label={'Receiving now '+item.sku} type="number" min="0" max={item.quantity-Number(item.received_quantity)} value={receiveNow[item.id]??0} onChange={e=>setReceiveNow({...receiveNow,[item.id]:e.target.value})}/>
+            </label>)}
+            {charges.map((c,index)=>{
+              const change=(key,value)=>setCharges(prev=>prev.map((x,i)=>i===index?{...x,[key]:value}:x));
+              return <div key={index} className="flex flex-wrap gap-2"><input aria-label="Charge description" placeholder="Transport or other charge" value={c.description} onChange={e=>change('description',e.target.value)}/>
+                <input aria-label="Charge payee" placeholder="Payable to" value={c.payee} onChange={e=>change('payee',e.target.value)}/>
+                <input aria-label="Charge amount" type="number" min=".01" step=".01" value={c.amount} onChange={e=>change('amount',e.target.value)}/>
+                <select value={c.line_id??''} onChange={e=>change('line_id',e.target.value||null)}><option value="">Shared charge</option>{po.items.map(i=><option key={i.id} value={i.id}>{i.sku}</option>)}</select>
+                <select value={c.basis} onChange={e=>change('basis',e.target.value)}><option value="quantity">By quantity</option><option value="value">By value</option><option value="weight">By weight</option><option value="manual">Manual amounts</option></select>
+                {(c.basis==='weight'||c.basis==='manual') && po.items.filter(i=>Number(receiveNow[i.id])>0 && (!c.line_id||Number(c.line_id)===i.id)).map(i=>{
+                  const byWeight=c.basis==='weight', field=byWeight?'weights':'shares';
+                  const value=c[field]?.[i.id];
+                  return <label key={i.id}>{i.sku} {byWeight?'grams per unit':'charge in Rs.'}
+                    <input type="number" min={byWeight?1:0} step={byWeight?1:0.01} value={value==null?'':byWeight?value:value/100}
+                      onChange={e=>change(field,{...c[field],[i.id]:e.target.value===''?null:Math.round(Number(e.target.value)*(byWeight?1:100))})}/></label>
+                })}
+                <button onClick={()=>setCharges(prev=>prev.filter((_,i)=>i!==index))}>Remove charge</button></div>
+            })}
+            <button onClick={()=>setCharges(prev=>[...prev,{description:'',payee:'',amount:'',basis:'quantity',line_id:null}])}>Add receipt charge</button>
+            <button disabled={busy} onClick={()=>doReceive(true)}>Preview landed costs</button>
+            {preview && <table className="w-full text-left text-sm"><caption>Current delivery</caption><thead><tr>{['SKU','Qty','Supplier transport','Other charges','Landed total'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+              <tbody>{preview.map(row=><tr key={row.id}><td>{po.items.find(i=>i.id===row.id)?.sku}</td><td>{row.incoming}</td><td>{money(row.freight/100)}</td><td>{money(row.extra/100)}</td><td>{money(row.totalCents/100)}</td></tr>)}</tbody></table>}
+            <button onClick={()=>doReceive()} disabled={busy||!Object.values(receiveNow).some(v=>Number(v)>0)}
+              className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50">Receive entered quantities</button></section>
           )}
 
+          <PurchaseFinance po={po} reload={load}/>
           {po.status === 'received' && (
             <p className="text-center text-sm text-emerald-600 dark:text-emerald-400">
               Received on {new Date(po.received_at).toLocaleString()} — stock has been updated.

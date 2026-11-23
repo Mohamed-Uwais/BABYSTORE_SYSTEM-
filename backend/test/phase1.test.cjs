@@ -79,20 +79,23 @@ function orderHarness({ stock = 10, failInsert = false, deducted = 0 } = {}) {
       calls.push({ sql, params });
       if (sql.includes('GET_LOCK')) return [[{ acquired: 1 }]];
       if (sql.includes('RELEASE_LOCK')) return [[{ released: 1 }]];
-      if (sql.includes('SELECT current_stock')) return [[{ current_stock: stock, cost_price: 20 }]];
+      if (sql.includes('FROM stock_batches WHERE')) return [[{id:1,quantity_remaining:stock,unit_cost:20}]];
+      if (sql.includes('SELECT current_stock') || sql.includes('SELECT v.current_stock')) return [[{ current_stock: stock, cost_price: 20 }]];
       if (sql.includes('maxNum')) return [[{ maxNum: 0 }]];
       if (sql.includes('INSERT INTO orders')) { if (failInsert) throw new Error('Injected insert failure'); return [{ insertId: 12 }]; }
       if (sql.includes('FROM orders WHERE id = ? FOR UPDATE')) return [[{ id: 12, status: 'pending' }]];
-      if (sql.includes('SELECT oi.*')) return [[{ id: 1, variant_id: 1, quantity: 2, line_total: 100, unit_price: 50 }]];
+      if (sql.includes('FROM sale_batch_allocations a')) return [[{order_item_id:1,batch_id:1,quantity:2,returned_qty:0,unit_cost:20}]];
+      if (sql.includes('SELECT oi.*')) return [[{ id: 1, variant_id: 1, quantity: 2, line_total: 100, unit_price: 50, fifo_cost_total:40 }]];
       if (sql.includes('AS already_returned')) return [[{ already_returned: 0 }]];
       if (sql.includes('AS total_items_qty')) return [[{ total_items_qty: 2 }]];
       if (sql.includes('AS total_returned_qty')) return [[{ total_returned_qty: 1 }]];
+      if(sql.includes('SELECT id,quantity FROM order_items'))return [[{id:1,quantity:2}]];
       if (sql.includes('SUM(quantity) AS quantity FROM order_items')) return [[{ variant_id: 1, quantity: 2 }]];
       if (sql.includes('AS deducted')) return [[{ deducted }]];
       return [{}];
     },
   };
-  return { calls, model: load('../src/models/orderModel.js', { '../config/db': { getConnection: async () => connection }, './customerModel': { addLedgerEntry: async () => {} } }) };
+  return { calls, model: load('../src/models/orderModel.js', { '../utils/applyPromotions': async items=>({totalDiscount:0,appliedPromotions:[],allocations:items.map(()=>({promotion:0,coupon:0}))}), '../config/db': { getConnection: async () => connection }, './customerModel': { addLedgerEntry: async () => {} } }) };
 }
 test('duplicate variant lines cannot oversell their combined stock', async () => {
   const { model, calls } = orderHarness({ stock: 3 });
@@ -130,7 +133,7 @@ test('accepting a website order deducts its stock once', async () => {
 
 test('failed replacement rolls the return back instead of leaving a partial exchange', async () => {
   const { model, calls } = orderHarness({ failInsert: true });
-  await assert.rejects(model.processExchange({ original_order_id: 12, return_items: [{ order_item_id: 1, quantity: 1 }], refund_method: 'none', replacement: payload() }, 1), /Injected/);
+  await assert.rejects(model.processExchange({ original_order_id: 12, return_items: [{ order_item_id: 1, quantity: 1 }], refund_method: 'none', replacement: {...payload(), payments:[{payment_method:'cash',amount:50}]} }, 1), /Injected/);
   assert.ok(calls.some(c => c.sql?.includes('INSERT INTO order_returns')));
   assert.equal(calls.filter(c => c === 'rollback').length, 1);
   assert.ok(!calls.includes('commit'));
@@ -188,10 +191,10 @@ test('repayment validates the current balance inside the transaction before ledg
   const calls = [];
   const conn = {
     beginTransaction: async () => calls.push('begin'), rollback: async () => calls.push('rollback'), release: () => calls.push('release'),
-    query: async sql => { calls.push(sql); assert.match(sql, /FOR UPDATE/); return [[{ credit_balance: '50.00' }]]; },
+    query: async sql => { calls.push(sql); if(sql.includes('credit_receipts'))return [[]]; assert.match(sql, /FOR UPDATE/); return [[{ credit_balance: '50.00' }]]; },
   };
   const model = load('../src/models/customerModel.js', { '../config/db': { getConnection: async () => conn }, './financialEngine': {} });
-  await assert.rejects(model.recordCreditRepayment(1, 100, '', 1), /exceeds/);
+  await assert.rejects(model.recordCreditRepayment(1, 100, '', 1,{order_id:1,method:'cash',account:'Test till',business_receipt_date:'2026-11-21',key:'test-credit-key'}), /exceeds/);
   assert.equal(calls[0], 'begin');
   assert.equal(calls.at(-2), 'rollback');
 });

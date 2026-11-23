@@ -88,7 +88,8 @@ async function getPackingQueue(req, res) {
          WHERE oi.order_id = ?`, [order.id]
       );
       order.items = items;
-      order.grand_total = Number(order.grand_total);
+      if (require('../middleware/salesScope').unrestricted(req.user)) order.grand_total = Number(order.grand_total);
+      else delete order.grand_total;
     }
 
     res.json({ success: true, data: rows });

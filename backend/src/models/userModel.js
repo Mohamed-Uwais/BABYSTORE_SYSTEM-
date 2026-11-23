@@ -16,7 +16,7 @@ async function getUserById(id) {
 }
 
 async function getPermissions(userId, role) {
-  if (role === 'owner') return [...ALL_PERMISSIONS];
+  if (['owner','admin'].includes(role)) return [...ALL_PERMISSIONS];
   const [rows] = await db.query('SELECT permission FROM user_permissions WHERE user_id = ?', [userId]);
   return rows.map(r => r.permission);
 }

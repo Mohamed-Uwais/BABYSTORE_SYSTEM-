@@ -7,6 +7,7 @@ import PageWrapper from '../components/PageWrapper';
 import BarcodeScanner from '../components/LazyBarcodeScanner';
 import EmptyState from '../components/EmptyState';
 
+function money(value){ return `Rs. ${Number(value).toFixed(2)}`; }
 function ScanIcon({ className = 'h-4 w-4' }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -36,6 +37,19 @@ export default function Purchasing() {
   const [showPOForm, setShowPOForm] = useState(false);
   const [poSupplierId, setPoSupplierId] = useState('');
   const [poItems, setPoItems] = useState([]);
+  const [invoiceReference,setInvoiceReference]=useState(''),[invoiceDate,setInvoiceDate]=useState('');
+  const [invoiceMatches,setInvoiceMatches]=useState([]);
+  const [lookup,setLookup]=useState('');
+  const searchTerm=lookup.trim().toLowerCase();
+  const matches=products.filter(p=>[p.name,p.sku,p.barcode,p.variant_label].some(v=>String(v||'').toLowerCase().includes(searchTerm)));
+  useEffect(()=>{
+    let active=true;
+    setInvoiceMatches([]);
+    if(!poSupplierId || !invoiceReference.trim())return;
+    const timer=setTimeout(()=>client.get('/purchase-orders/invoice-match',{params:{supplier_id:poSupplierId,reference:invoiceReference.trim()}})
+      .then(r=>{if(active)setInvoiceMatches(r.data.data)}).catch(()=>{if(active)setError('Could not check the invoice reference')}),200);
+    return ()=>{active=false;clearTimeout(timer)};
+  },[invoiceReference,poSupplierId]);
   const [variantPick, setVariantPick] = useState('');
   const [variantQty, setVariantQty] = useState(1);
   const [error, setError] = useState('');
@@ -51,8 +65,8 @@ export default function Purchasing() {
     setError('');
     try {
     const [s, ls, po, p] = await Promise.all([
-      client.get('/suppliers'), client.get('/products/low-stock'),
-      client.get('/purchase-orders'), client.get('/products'),
+      client.get('/suppliers'), client.get('/purchase-orders/low-stock'),
+      client.get('/purchase-orders'), client.get('/purchase-orders/variants'),
     ]);
     setSuppliers(s.data.data); setLowStock(ls.data.data);
     setPurchaseOrders(po.data.data); setProducts(p.data.data);
@@ -62,7 +76,7 @@ export default function Purchasing() {
 
   const handlePoScan = useCallback((code) => {
     const scanned = String(code).trim();
-    const match = productsRef.current.find((p) => p.barcode && String(p.barcode).trim() === scanned);
+    const match = productsRef.current.find((p) => String(p.barcode||p.sku).trim()===scanned || p.sku===scanned);
     if (!match) { setScanMessage({ type: 'error', text: `Barcode not recognized: ${scanned}` }); return; }
     setPoItems((prev) => {
       const existing = prev.find((l) => l.variant_id === match.variant_id);
@@ -107,8 +121,8 @@ export default function Purchasing() {
     poSubmittingRef.current = true;
     setPoSubmitting(true);
     try {
-      await client.post('/purchase-orders', { supplier_id: Number(poSupplierId), items: poItems.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity })) });
-      setPoItems([]); setPoSupplierId(''); setShowPOForm(false); loadAll(); toast.success('Purchase order created');
+      await client.post('/purchase-orders', { supplier_id: Number(poSupplierId), invoice_reference:invoiceReference.trim()||null, invoice_date:invoiceDate||null, items: poItems.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity,unit_cost_price:l.cost==null||l.cost===''?null:Number(l.cost) })) });
+      setPoItems([]); setPoSupplierId('');setInvoiceDate('');setInvoiceReference('');setLookup(''); setShowPOForm(false); loadAll(); toast.success('Purchase order created');
     } catch (err) { setError(err.response?.data?.message ?? 'Could not create purchase order'); }
     finally { poSubmittingRef.current = false; setPoSubmitting(false); }
   }
@@ -185,10 +199,19 @@ export default function Purchasing() {
                     <option value="">Select supplier...</option>
                     {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
+                  <label>Invoice reference <input maxLength={100} value={invoiceReference} onChange={e=>setInvoiceReference(e.target.value)}/></label>
+                  <label>Invoice date <input type="date" value={invoiceDate} onChange={e=>setInvoiceDate(e.target.value)}/></label>
+                  {invoiceMatches.length>0 && <p role="status">This supplier reference already appears on {invoiceMatches.map(m=>m.po_number).join(', ')}.</p>}
+                  <label>Find variant <input aria-label="Find purchase variant" placeholder="Name, SKU or barcode" value={lookup} onChange={e=>{setLookup(e.target.value);setVariantPick('')}} onKeyDown={e=>{
+                    if(e.key!=='Enter')return;
+                    e.preventDefault();
+                    const exact=products.find(p=>[p.sku,p.barcode].some(v=>v && String(v).toLowerCase()===searchTerm));
+                    if(exact || matches.length===1){handlePoScan((exact||matches[0]).sku);setLookup('')}
+                  }}/></label>
                   <div className="flex gap-2">
                     <select value={variantPick} onChange={(e) => setVariantPick(e.target.value)} className={`${ic} flex-1`}>
                       <option value="">Select product variant...</option>
-                      {products.map((p) => <option key={p.variant_id} value={p.variant_id}>{p.name} - {p.variant_label} ({p.sku})</option>)}
+                      {matches.map((p) => <option key={p.variant_id} value={p.variant_id}>{p.name} - {p.variant_label} ({p.sku})</option>)}
                     </select>
                     <input type="number" min="1" value={variantQty} onChange={(e) => setVariantQty(Number(e.target.value))} className={`${ic} w-20`} />
                     <button type="button" onClick={addPoItem} className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">Add</button>
@@ -196,14 +219,14 @@ export default function Purchasing() {
                       className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.97]"><ScanIcon />Scan</button>
                   </div>
                   {poItems.length > 0 && (
-                    <div className="space-y-1.5">
-                      {poItems.map((l) => (
-                        <div key={l.variant_id} className="flex items-center justify-between rounded-xl bg-slate-50 px-2.5 py-1.5 text-sm dark:bg-slate-800">
-                          <span className="text-slate-700 dark:text-slate-300">{l.product_name} · {l.variant_label} · qty {l.quantity}</span>
-                          <button type="button" onClick={() => setPoItems(prev => prev.filter(i => i.variant_id !== l.variant_id))} className="text-slate-400 hover:text-red-500">✕</button>
-                        </div>
-                      ))}
-                    </div>
+                    <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+                      <thead><tr><th>Item / variant</th><th>Qty</th><th>Unit purchase cost</th><th>Line total</th><th/></tr></thead>
+                      <tbody>{poItems.map(l=><tr key={l.variant_id}><td>{l.product_name} · {l.variant_label}</td>
+                        <td><input className="w-16 border" aria-label="Order quantity" type="number" min="1" required value={l.quantity} onChange={e=>setPoItems(prev=>prev.map(i=>i.variant_id===l.variant_id?{...i,quantity:Number(e.target.value)}:i))}/></td>
+                        <td><input className="w-24 border" aria-label="Unit purchase cost" type="number" min="0" step=".01" value={l.cost??''} onChange={e=>setPoItems(prev=>prev.map(i=>i.variant_id===l.variant_id?{...i,cost:e.target.value}:i))}/></td>
+                        <td>{l.cost==null||l.cost===''?'Unknown':money(l.quantity*Number(l.cost))}</td>
+                        <td><button aria-label="Remove PO line" type="button" onClick={()=>setPoItems(prev=>prev.filter(i=>i.variant_id!==l.variant_id))}>×</button></td></tr>)}</tbody>
+                    </table></div>
                   )}
                   <button type="submit" disabled={poSubmitting} className="w-full rounded-xl bg-brand-600 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50">{poSubmitting ? 'Creating purchase order...' : 'Create purchase order'}</button>
                 </motion.form>
@@ -213,7 +236,7 @@ export default function Purchasing() {
               {purchaseOrders.map((po) => (
                 <Link key={po.id} to={`/purchasing/${po.id}`} className="flex items-center justify-between py-2.5 text-sm transition hover:bg-slate-50 dark:hover:bg-slate-800/50">
                   <div><span className="font-mono font-medium text-slate-900 dark:text-white">{po.po_number}</span><span className="text-slate-500 dark:text-slate-400"> · {po.supplier_name}</span></div>
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[po.status]}`}>{po.status}</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[po.status]}`}>{po.status === 'paid' ? 'Costs confirmed' : po.status}</span>
                 </Link>
               ))}
               {purchaseOrders.length === 0 && <EmptyState icon="📝" title="No purchase orders" description="Create your first PO" />}

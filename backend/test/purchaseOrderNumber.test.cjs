@@ -42,6 +42,7 @@ function setup({ failItem = false, lockAvailable = true } = {}) {
           return [{}];
         }
         if (sql.includes('SELECT po.*')) return [[{ id: highest }]];
+        if (sql.includes('FROM purchase_receipt_charges')||sql.includes('FROM purchase_payments'))return [[]];
         if (sql.includes('SELECT poi.*')) return [[]];
         throw new Error(`Unexpected SQL: ${sql}`);
       },

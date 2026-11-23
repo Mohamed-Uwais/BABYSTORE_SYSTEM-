@@ -106,7 +106,8 @@ router.get('/chatbot-alerts', async (req, res) => {
 
     res.json({
       data: {
-        chatbot_orders: newOrders,
+        chatbot_orders: require('../middleware/salesScope').unrestricted(req.user) ? newOrders :
+          (await require('../utils/salesAccess').cashierBills(db)).filter(o => ['whatsapp','instagram','messenger'].includes(o.channel)),
         active_conversations: activeConvs[0].count,
         routing_stats: routingStats,
       },

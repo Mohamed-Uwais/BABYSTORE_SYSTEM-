@@ -9,6 +9,11 @@ function dateOrDefault(val, fallbackDaysAgo) {
 
 async function salesReport(req, res) {
   try {
+    if(!require('../middleware/salesScope').unrestricted(req.user)){
+      const orders=await require('../utils/salesAccess').cashierBills(require('../config/db'));
+      const total=orders.reduce((n,o)=>n+Number(o.grand_total),0);
+      return res.json({success:true,data:{orders:require('../middleware/salesScope').visibleBills(orders,req.query),summary:{total_orders:orders.length,total_revenue:total,avg_order_value:orders.length?total/orders.length:0},restricted:true}});
+    }
     const from = dateOrDefault(req.query.from, 30);
     const to = dateOrDefault(req.query.to, 0);
     const data = await reportModel.salesReport({ from, to });

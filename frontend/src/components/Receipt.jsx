@@ -1,3 +1,4 @@
+import { previewReceipt } from './receiptPrint';
 import { useEffect, useRef, useState } from 'react';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
@@ -22,7 +23,7 @@ const PAYMENT_LABELS = {
   cod: 'Cash on Delivery',
 };
 
-export default function Receipt({ orderId, onClose }) {
+export default function Receipt({ orderId, onClose, pendingPrint }) {
   const toast = useToast();
   const [order, setOrder] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -55,8 +56,27 @@ export default function Receipt({ orderId, onClose }) {
       } else {
         setLoading(false);
       }
-    });
+    }).catch(()=>setLoading(false));
   }, [orderId]);
+
+  useEffect(() => {
+    if (loading || !order || !receiptRef.current || pendingPrint?.current !== orderId) return;
+    pendingPrint.current = null;
+    const frame = document.createElement('iframe');
+    frame.title = 'Sale receipt print job';
+    frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0';
+    document.body.append(frame);
+    let disposed = false;
+    const win = frame.contentWindow;
+    try {
+      previewReceipt(receiptRef.current,settings,false,win);
+      Promise.all(Array.from(win.document.images,img=>img.decode().catch(()=>{}))).then(()=>{
+        if(disposed) return;
+        try {win.print()} catch {toast.error('Sale saved. Use Reprint copy to try printing again.')}
+      });
+    } catch { toast.error('Sale saved. Use Reprint copy to try printing again.') }
+    return ()=>{disposed=true;frame.remove()};
+  },[loading,order,orderId,settings,pendingPrint]);
 
   function generateWhatsAppText() {
     if (!order) return '';
@@ -127,17 +147,8 @@ export default function Receipt({ orderId, onClose }) {
     } finally { setWhatsappBusy(false); }
   }
 
-  function handlePrint() {
-    const content = receiptRef.current;
-    if (!content) return;
-    const win = window.open('', '_blank', 'width=320,height=600');
-    win.document.write(`<!DOCTYPE html><html><head><title>Receipt</title><style>${printCSS}</style></head><body>`);
-    win.document.write(content.innerHTML);
-    win.document.write('</body></html>');
-    win.document.close();
-    win.focus();
-    win.print();
-    win.close();
+  function handlePrint(copy = false) {
+    if (receiptRef.current && !previewReceipt(receiptRef.current, settings, copy)) toast.error('Allow pop-ups to preview the receipt');
   }
 
   if (loading) {
@@ -164,6 +175,11 @@ export default function Receipt({ orderId, onClose }) {
     );
   }
 
+  const cashPayments = order.payments.filter(p => p.payment_method === 'cash');
+  const cashTendered = cashPayments.reduce((sum,p)=>sum+Number(p.cash_tendered ?? p.amount),0);
+  const change = cashPayments.some(p=>p.cash_tendered!=null)
+    ? cashTendered - cashPayments.reduce((sum,p)=>sum+Number(p.amount),0)
+    : order.payments.length === 1 ? Math.max(0,cashTendered-Number(order.grand_total)) : 0;
   const cur = settings?.currency_symbol || 'Rs.';
   const storeName = settings?.store_name || 'LITTORA';
   const addressParts = [settings?.address_line1, settings?.address_line2, settings?.city].filter(Boolean);
@@ -191,9 +207,9 @@ export default function Receipt({ orderId, onClose }) {
             {/* Store header */}
             <div className="text-center">
               <p className="text-sm font-bold">{storeName}</p>
-              {addressParts.length > 0 && <p>{addressParts.join(', ')}</p>}
-              {settings?.phone && <p>Tel: {settings.phone}</p>}
-              {settings?.email && <p>{settings.email}</p>}
+              {Boolean(settings?.receipt_contact ?? 1) && addressParts.length > 0 && <p>{addressParts.join(', ')}</p>}
+              {Boolean(settings?.receipt_contact ?? 1) && settings?.phone && <p>Tel: {settings.phone}</p>}
+              {Boolean(settings?.receipt_contact ?? 1) && settings?.email && <p>{settings.email}</p>}
               {settings?.tax_id && <p>Tax ID: {settings.tax_id}</p>}
             </div>
 
@@ -208,19 +224,19 @@ export default function Receipt({ orderId, onClose }) {
               <span>Date:</span>
               <span>{fmtDate(order.created_at)}</span>
             </div>
-            {order.cashier_name && (
+            {Boolean(settings?.receipt_cashier ?? 1) && order.cashier_name && (
               <div className="flex justify-between">
                 <span>Cashier:</span>
                 <span>{order.cashier_name}</span>
               </div>
             )}
-            {order.customer_name && (
+            {Boolean(settings?.receipt_customer ?? 1) && order.customer_name && (
               <div className="flex justify-between">
                 <span>Customer:</span>
                 <span>{order.customer_name}</span>
               </div>
             )}
-            {order.customer_phone && (
+            {Boolean(settings?.receipt_customer ?? 1) && order.customer_phone && (
               <div className="flex justify-between">
                 <span>Phone:</span>
                 <span>{order.customer_phone}</span>
@@ -242,7 +258,12 @@ export default function Receipt({ orderId, onClose }) {
             {/* Line items */}
             {order.items.map((item, i) => (
               <div key={i}>
-                <p className="font-medium">{item.product_name}</p>
+                <p className="font-medium">{item.product_name} {item.variant_label}</p>
+                {item.discount_allocation ? <div>
+                  {Object.entries({promotion:'Promotion',coupon:'Coupon',manual:'Manual discount',loyalty:'Loyalty'}).map(([key,label])=>
+                    item.discount_allocation[key]>0 && <p key={key}>{label}: {money(item.discount_allocation[key]/100,cur)}</p>)}
+                  <p>Line paid: {money(item.refund_paid_amount,cur)}</p>
+                </div> : Number(item.discount_amount)>0 && <p>Item discount: {money(item.discount_amount,cur)}</p>}
                 <div className="flex justify-between">
                   <span className="w-1/4" />
                   <span className="w-1/6 text-center">{item.quantity}</span>
@@ -265,6 +286,7 @@ export default function Receipt({ orderId, onClose }) {
                 <span>-{money(order.discount_total, cur)}</span>
               </div>
             )}
+            {order.receipt_coupon_code && <p>Included coupon {order.receipt_coupon_code}: {money(order.receipt_coupon_amount,cur)}</p>}
             {Number(order.delivery_fee) > 0 && (
               <div className="flex justify-between">
                 <span>Delivery</span>
@@ -279,6 +301,7 @@ export default function Receipt({ orderId, onClose }) {
 
             <div className="my-2 border-t border-dashed border-slate-400" />
 
+            {order.credits?.map((c,i)=><p key={i}>Return on bill #{c.original_order_id}{c.replacement_order_id && <> · Applied to bill #{c.replacement_order_id}: {money(c.applied_amount,cur)}</>}{Number(c.residual_amount)>0 && <> · {c.residual_method} refund {money(c.residual_amount,cur)}</>}</p>)}
             {/* Payments */}
             <p className="font-medium">Payment:</p>
             {order.payments.map((p, i) => (
@@ -288,14 +311,9 @@ export default function Receipt({ orderId, onClose }) {
               </div>
             ))}
 
-            {/* Change due for cash */}
-            {order.payments.length === 1 && order.payments[0].payment_method === 'cash' &&
-              Number(order.payments[0].amount) > Number(order.grand_total) && (
-              <div className="mt-1 flex justify-between font-medium">
-                <span>Change</span>
-                <span>{money(Number(order.payments[0].amount) - Number(order.grand_total), cur)}</span>
-              </div>
-            )}
+            {order.returns?.map(r => <div key={r.id}><strong>Return</strong> {r.quantity} × {r.product_name} {r.variant_label} · {r.reason} · Refund {money(r.refund_amount, cur)} · {r.restock ? 'Restocked' : 'Kept out of stock'}</div>)}
+            {cashTendered > 0 && <div className="flex justify-between"><span>Cash tendered</span><span>{money(cashTendered,cur)}</span></div>}
+            {change > 0 && <div className="flex justify-between"><span>Change</span><span>{money(change,cur)}</span></div>}
 
             {/* Outstanding credit balance */}
             {order.customer_credit_balance != null && Number(order.customer_credit_balance) !== 0 && (() => {
@@ -350,12 +368,13 @@ export default function Receipt({ orderId, onClose }) {
 
         {/* Action buttons */}
         <div className="flex gap-2 border-t border-slate-200 px-5 py-4">
-          <button onClick={handlePrint}
+          <button onClick={() => handlePrint(true)} className="rounded border px-2">Reprint copy</button>
+          <button onClick={() => handlePrint(false)}
             className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" />
             </svg>
-            Print
+            Print preview
           </button>
           <button onClick={handleWhatsApp} disabled={whatsappBusy}
             className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
@@ -373,42 +392,3 @@ export default function Receipt({ orderId, onClose }) {
     </div>
   );
 }
-
-const printCSS = `
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 11px;
-    line-height: 1.5;
-    color: #000;
-    width: 72mm;
-    padding: 4mm;
-  }
-  .text-center { text-align: center; }
-  .text-right { text-align: right; }
-  .font-bold, .font-medium { font-weight: bold; }
-  .text-sm { font-size: 13px; }
-  .text-slate-500, .text-slate-400 { color: #555; }
-  .text-red-600 { color: #c00; }
-  .my-1, .my-2 { margin-top: 4px; margin-bottom: 4px; }
-  .mt-1 { margin-top: 4px; }
-  .mb-2 { margin-bottom: 4px; }
-  .border-t { border-top: 1px dashed #000; }
-  .border-dotted { border-style: dotted; }
-  .border-dashed { border-style: dashed; }
-  .flex { display: flex; }
-  .justify-between { justify-content: space-between; }
-  .w-1\\/4 { width: 25%; }
-  .w-1\\/6 { width: 16.6667%; }
-  .w-\\[30\\%\\] { width: 30%; }
-  .mx-auto { margin-left: auto; margin-right: auto; }
-  p { margin: 0; }
-  .receipt-logo img {
-    display: block;
-    margin: 0 auto 4px;
-    max-width: 200px;
-    max-height: 50px;
-    filter: grayscale(100%);
-  }
-  @page { margin: 0; size: 80mm auto; }
-`;

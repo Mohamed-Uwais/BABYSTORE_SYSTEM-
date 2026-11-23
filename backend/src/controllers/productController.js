@@ -75,6 +75,7 @@ async function editProduct(req, res) {
 
 async function editVariant(req, res) {
   try {
+    if(!require('../middleware/salesScope').unrestricted(req.user))delete req.body.cost_price;
     await productModel.updateVariant(req.params.variantId, req.body);
     if (req.body.price_tiers !== undefined) {
       await productModel.savePriceTiers(req.params.variantId, req.body.price_tiers);

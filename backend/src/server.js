@@ -123,6 +123,11 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5001;
 
-app.listen(PORT, () => {
+if (process.env.PRINT_REVIEW === '1') {
+  const dist = path.resolve(__dirname, '../../frontend/dist');
+  app.use(express.static(dist));
+  app.get('/{*page}', (req, res) => res.sendFile(path.join(dist, 'index.html')));
+}
+app.listen(PORT, process.env.PRINT_REVIEW === '1' ? '127.0.0.1' : undefined, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

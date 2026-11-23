@@ -3,6 +3,9 @@ const customerModel = require('../models/customerModel');
 async function listCustomers(req, res) {
   try {
     const customers = await customerModel.getAllCustomers();
+    if(!require('../middleware/salesScope').unrestricted(req.user)){
+      for(const customer of customers){delete customer.total_spent;delete customer.total_orders}
+    }
     res.json({ success: true, data: customers });
   } catch (error) {
     console.error(error);
@@ -14,6 +17,13 @@ async function getCustomer(req, res) {
   try {
     const customer = await customerModel.getCustomerById(req.params.id);
     if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+    if(!require('../middleware/salesScope').unrestricted(req.user)){
+      delete customer.total_spent;delete customer.total_orders;
+      const visible=await require('../utils/salesAccess').cashierBills(require('../config/db'));
+      const allowed=new Set(visible.map(o=>o.id));
+      const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Colombo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      customer.orders=customer.orders.filter(o=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Colombo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(o.created_at))<today||allowed.has(o.id));
+    }
     res.json({ success: true, data: customer });
   } catch (error) {
     console.error(error);
@@ -72,7 +82,7 @@ async function recordRepayment(req, res) {
   try {
     const { amount, notes } = req.body;
     if (!amount || amount <= 0) return res.status(400).json({ success: false, message: 'Amount must be a positive number' });
-    const customer = await customerModel.recordCreditRepayment(req.params.id, parseFloat(amount), notes, req.user?.id);
+    const customer = await customerModel.recordCreditRepayment(req.params.id, parseFloat(amount), notes, req.user?.id,{...req.body,key:req.headers['idempotency-key']});
     res.json({ success: true, data: customer });
   } catch (error) {
     console.error(error);

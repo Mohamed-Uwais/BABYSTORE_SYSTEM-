@@ -9,7 +9,7 @@ const EXCLUDED = "('cancelled','refunded','partially_refunded')";
 const ITEM_REVENUE = `COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0)`;
 
 // COGS from cost_price_snapshot ONLY — never fall back to current variant cost_price
-const ITEM_COGS = `COALESCE(SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, 0)), 0)`;
+const ITEM_COGS = `COALESCE(SUM(COALESCE(oi.fifo_cost_total, oi.quantity * COALESCE(oi.cost_price_snapshot, 0))), 0)`;
 
 // Returned revenue (from order_returns)
 const RETURNED_REVENUE = `COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
@@ -17,7 +17,7 @@ const RETURNED_REVENUE = `COALESCE((SELECT SUM(r.quantity * oi2.unit_price)
   WHERE r.order_id = o.id), 0)`;
 
 // Returned COGS (only when restocked)
-const RETURNED_COGS = `COALESCE((SELECT SUM(r.quantity * COALESCE(oi2.cost_price_snapshot, 0))
+const RETURNED_COGS = `COALESCE((SELECT SUM(COALESCE(r.fifo_cost_total, r.quantity * COALESCE(oi2.cost_price_snapshot, 0)))
   FROM order_returns r
   JOIN order_items oi2 ON oi2.id = r.order_item_id
   WHERE r.order_id = o.id AND r.restock = 1), 0)`;

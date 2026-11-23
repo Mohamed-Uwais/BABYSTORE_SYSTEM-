@@ -151,6 +151,7 @@ exports.checkout = async (req, res, next) => {
       delivery_address: delivery_address || null,
       delivery_zone_id: delivery_zone_id || null,
       delivery: fulfillment_type === 'delivery' ? { receiver_name: full_name || null, receiver_phone: phone, receiver_address: delivery_address || null } : null,
+      promotion_result:promotion,
       discount_total: promotion.totalDiscount,
       delivery_fee: calculatedDeliveryFee,
       notes: notes || 'Website order',

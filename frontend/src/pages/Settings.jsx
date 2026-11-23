@@ -1,3 +1,5 @@
+import LabelSettings from '../components/LabelSettings';
+import { previewReceipt } from '../components/receiptPrint';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import client from '../api/client';
@@ -138,6 +140,39 @@ export default function Settings() {
           </div>
 
           <form onSubmit={handleSave} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <label className="block">Receipt paper
+              <select className="ml-3 rounded border p-2" value={form.receipt_paper || '80mm'} onChange={e => update('receipt_paper', e.target.value)}>
+                <option value="58mm">58 mm thermal</option>
+                <option value="80mm">80 mm thermal</option>
+                <option value="A4">A4 invoice</option>
+              </select>
+            </label>
+            {[
+              ['receipt_width_mm', 'Printable width (mm, blank for paper width)', 32, 210, ''],
+              ['receipt_margin_mm', 'Receipt margin (mm)', 0, 10, 4],
+              ['receipt_font_px', 'Receipt font size (px)', 9, 20, 11],
+            ].map(([key, label, min, max, fallback]) => (
+              <label key={key} className="block">{label}
+                <input type="number" className="ml-3 w-20 rounded border p-2" min={min} max={max}
+                  required={key !== 'receipt_width_mm'} value={form[key] ?? fallback}
+                  onChange={e => update(key, e.target.value === '' ? null : Number(e.target.value))} />
+              </label>
+            ))}
+            <label className="block"><input type="checkbox" checked={Boolean(form.receipt_show_logo ?? 1)}
+              onChange={e => update('receipt_show_logo', Number(e.target.checked))} /> Print store logo</label>
+            <button type="button" className="rounded border px-3 py-2" onClick={() => {
+              const sample = document.createElement('div');
+              for (const line of [form.store_name, 'TEST PRINT', 'Extra-long item name • adjustable baby carrier with padded shoulder straps', '2 × Rs.2,500.00', 'Discount Rs.225.00', 'Coupon Rs.100.00', 'Total Rs.4,675.00', 'Cash tendered Rs.5,000.00', 'Change Rs.325.00']) {
+                const row = document.createElement('p');
+                row.textContent = line;
+                sample.append(row);
+              }
+              if (!previewReceipt(sample, form)) toast.error('Allow pop-ups to preview the receipt');
+            }}>Preview test receipt</button>
+            {['customer','cashier','contact'].map(key => <label key={key} className="block">
+              <input type="checkbox" checked={Boolean(form['receipt_'+key] ?? 1)} onChange={e=>update('receipt_'+key,Number(e.target.checked))}/> Print {key} details
+            </label>)}
+            <LabelSettings form={form} update={update} />
             {FIELDS.map((f) => (
               <div key={f.key}>
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">{f.label}</label>

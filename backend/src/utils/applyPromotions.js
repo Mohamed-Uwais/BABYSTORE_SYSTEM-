@@ -37,6 +37,29 @@ async function applyPromotions(cartItems, couponCode = null) {
 
   const cartTotal = cartItems.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
 
+  const allocations = cartItems.map(()=>({promotion:0,coupon:0}));
+  function allocate(amount, eligible, field) {
+    const weights=eligible.map(({item,weight})=>{
+      const index=cartItems.indexOf(item);
+      const room=Math.max(0,Math.round((item.quantity*item.unit_price-(item.discount_amount||0))*100)-allocations[index].promotion-allocations[index].coupon);
+      return {index,room,weight};
+    }).filter(row=>row.room>0 && row.weight>0);
+    let left=Math.round(amount*100);
+    while(left>0 && weights.some(row=>row.room>0)){
+      const active=weights.filter(row=>row.room>0);
+      const total=active.reduce((sum,row)=>sum+row.weight,0);
+      const start=left;
+      let cumulative=0,previous=0;
+      for(const row of active){
+        cumulative+=row.weight;
+        const target=Math.round(start*cumulative/total);
+        const used=Math.min(row.room,target-previous);
+        allocations[row.index][field]+=used;
+        row.room-=used;left-=used;previous=target;
+      }
+    }
+  }
+
   const autoPromos = activePromos.filter(p => p.promo_type !== 'coupon_code');
 
   for (const promo of autoPromos) {
@@ -47,11 +70,12 @@ async function applyPromotions(cartItems, couponCode = null) {
       for (const item of cartItems) {
         if (!doesPromoApplyToItem(promo, item)) continue;
         const perUnit = calcItemDiscount(promo, item.unit_price);
-        const existing = itemDiscounts.get(item.variant_id) || 0;
+        const existing = itemDiscounts.get(item) || 0;
         const perUnitTotal = perUnit * item.quantity;
         if (perUnitTotal > existing) {
+          allocate(perUnitTotal-existing,[{item,weight:1}],'promotion');
           promoDiscount += perUnitTotal - existing;
-          itemDiscounts.set(item.variant_id, perUnitTotal);
+          itemDiscounts.set(item, perUnitTotal);
         }
       }
       if (promoDiscount > 0) {
@@ -76,13 +100,14 @@ async function applyPromotions(cartItems, couponCode = null) {
         const sorted = [];
         for (const item of qualifying) {
           for (let i = 0; i < item.quantity; i++) {
-            sorted.push({ variant_id: item.variant_id, unit_price: item.unit_price });
+            sorted.push({ item, variant_id: item.variant_id, unit_price: item.unit_price });
           }
         }
         sorted.sort((a, b) => a.unit_price - b.unit_price);
 
         let promoDiscount = 0;
         for (let i = 0; i < Math.min(freeCount, sorted.length); i++) {
+          allocate(sorted[i].unit_price,[{item:sorted[i].item,weight:1}],'promotion');
           promoDiscount += sorted[i].unit_price;
         }
 
@@ -115,6 +140,10 @@ async function applyPromotions(cartItems, couponCode = null) {
         const bundleDiscount = (regularPrice - Number(promo.bundle_price)) * bundleMatches;
 
         if (bundleDiscount > 0) {
+          allocate(bundleDiscount,promo.bundle_items.map(b=>{
+            const item=cartItems.find(i=>Number(i.variant_id)===Number(b.variant_id));
+            return {item,weight:b.quantity*item.unit_price};
+          }),'promotion');
           appliedPromotions.push({
             id: promo.id, title: promo.title, promo_type: promo.promo_type,
             discount: Math.round(bundleDiscount * 100) / 100,
@@ -168,6 +197,7 @@ async function applyPromotions(cartItems, couponCode = null) {
         }
 
         if (couponDiscount > 0) {
+          allocate(couponDiscount,cartItems.filter(i=>doesPromoApplyToItem(coupon,i)).map(item=>({item,weight:hasTargets?calcItemDiscount(coupon,item.unit_price)*item.quantity:item.quantity*item.unit_price})),'coupon');
           appliedPromotions.push({
             id: coupon.id, title: coupon.title, promo_type: 'coupon_code',
             discount: Math.round(couponDiscount * 100) / 100,
@@ -179,9 +209,10 @@ async function applyPromotions(cartItems, couponCode = null) {
     }
   }
 
-  totalDiscount = Math.round(Math.min(totalDiscount, cartTotal) * 100) / 100;
+  totalDiscount = allocations.reduce((sum,a)=>sum+a.promotion+a.coupon,0)/100;
 
   return {
+    allocations,
     appliedPromotions,
     totalDiscount,
     couponError,

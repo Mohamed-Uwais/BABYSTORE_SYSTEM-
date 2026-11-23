@@ -251,7 +251,7 @@ async function profitReport({ from, to }) {
     SELECT p.name AS product_name, pv.variant_label, pv.id AS variant_id,
            SUM(oi.quantity) AS units_sold,
            SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)) AS revenue,
-           SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, 0)) AS cogs
+           SUM(COALESCE(oi.fifo_cost_total, oi.quantity * COALESCE(oi.cost_price_snapshot, 0))) AS cogs
     FROM orders o
     JOIN order_items oi ON oi.order_id = o.id
     LEFT JOIN product_variants pv ON pv.id = oi.variant_id

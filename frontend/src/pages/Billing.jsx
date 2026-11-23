@@ -25,6 +25,12 @@ function money(n) {
   return `Rs. ${Number(n || 0).toFixed(2)}`;
 }
 
+function lineDiscount(line) {
+  const gross = Math.round(line.unit_price * line.quantity * 100);
+  const requested = Math.round((Number(line.discountValue) || 0) * 100) * (line.discountScope === 'unit' ? line.quantity : 1);
+  return Math.min(gross, Math.max(0, requested)) / 100;
+}
+
 function getTierPrice(priceTiers, quantity, retailPrice) {
   if (!priceTiers?.length) return null;
   let matched = null;
@@ -43,7 +49,10 @@ export default function Billing() {
   const [fromQuotation, setFromQuotation] = useState(null);
 
   const [products, setProducts] = useState([]);
-  const [bestSellers, setBestSellers] = useState([]);
+  const [selectedLine,setSelectedLine] = useState(null);
+  const [activeResult,setActiveResult] = useState(0);
+  const [confirmPayment,setConfirmPayment] = useState(false);
+  const [lastRemoved,setLastRemoved] = useState(null);
   const [search, setSearch] = useState('');
   const [loadingProducts, setLoadingProducts] = useState(true);
 
@@ -59,12 +68,13 @@ export default function Billing() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestTimer = useRef(null);
 
-  const [payments, setPayments] = useState([]);
+  const [draftPayments, setPayments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const submissionBusy = useRef(false);
   const [error, setError] = useState('');
   const [successOrder, setSuccessOrder] = useState(null);
 
+  const pendingPrint = useRef(null);
   const [receiptOrderId, setReceiptOrderId] = useState(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanMessage, setScanMessage] = useState(null);
@@ -84,7 +94,7 @@ export default function Billing() {
   const [receiverAddress, setReceiverAddress] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
-  const [tagFilter, setTagFilter] = useState('');
+
   const [wholesaleMode, setWholesaleMode] = useState(false);
   const [quotationId, setQuotationId] = useState(null);
   const [generatingQuote, setGeneratingQuote] = useState(false);
@@ -92,6 +102,7 @@ export default function Billing() {
   const [appliedPromos, setAppliedPromos] = useState([]);
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [freeDelivery, setFreeDelivery] = useState(false);
+  const [redeemPoints,setRedeemPoints]=useState(0);
   const [couponCode, setCouponCode] = useState('');
   const [couponApplied, setCouponApplied] = useState(null);
   const [couponError, setCouponError] = useState('');
@@ -162,7 +173,7 @@ export default function Billing() {
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
     try {
-      const res = await client.get('/products');
+      const res = await client.get('/products/billing-variants');
       setProducts(res.data.data || []);
     } catch {
       toast.error('Unable to load products. Please retry.');
@@ -171,35 +182,22 @@ export default function Billing() {
     }
   }, [toast]);
 
-  async function loadBestSellers() {
-    try {
-      const res = await client.get('/orders/best-sellers');
-      setBestSellers(res.data.data || []);
-    } catch { setBestSellers([]); }
-  }
-
   useEffect(() => {
     loadProducts();
-    loadBestSellers();
+
     client.get('/delivery/zones').then(r => setZones(r.data.data)).catch(() => {});
     client.get('/couriers').then(r => setCouriers(r.data.data || [])).catch(() => {});
   }, [loadProducts]);
 
-  const filteredProducts = useMemo(() => {
-    let result = products;
-    if (tagFilter) {
-      result = result.filter(p => p.tags?.some(t => t.name === tagFilter));
-    }
-    const q = search.trim();
-    if (!q) return result;
-    return fuzzySearchProducts(result, q);
-  }, [products, search, tagFilter]);
-
-  const allTags = useMemo(() => {
-    const set = new Set();
-    products.forEach(p => p.tags?.forEach(t => set.add(t.name)));
-    return [...set].sort();
-  }, [products]);
+  const filteredProducts = useMemo(() => search.trim()
+    ? fuzzySearchProducts(products.filter(p=>p.variant_id),search).slice(0,30) : [], [products,search]);
+  function chooseVariant(p) {
+    if (!p || p.current_stock <= 0) return;
+    addToCart(p);
+    setSearch('');
+    setActiveResult(0);
+    searchRef.current?.focus();
+  }
 
   function addToCart(p) {
     if (!p.variant_id || p.current_stock <= 0) return;
@@ -209,7 +207,7 @@ export default function Billing() {
         if (existing.quantity >= p.current_stock) return prev;
         const newQty = existing.quantity + 1;
         const tier = getTierPrice(existing.price_tiers, newQty, existing.base_price);
-        const newPrice = tier ? tier.tier_price / tier.min_quantity : existing.base_price;
+        const newPrice = existing.overridePrice ?? (tier ? tier.tier_price / tier.min_quantity : existing.base_price);
         return prev.map((l) =>
           l.variant_id === p.variant_id ? { ...l, quantity: newQty, unit_price: newPrice, active_tier: tier } : l,
         );
@@ -225,6 +223,7 @@ export default function Billing() {
           product_name: p.name || p.product_name,
           unit_price: basePrice,
           base_price: basePrice,
+          mrp: p.mrp,
           quantity: 1,
           max_stock: p.current_stock,
           price_tiers: tiers,
@@ -239,7 +238,7 @@ export default function Billing() {
   addToCartRef.current = addToCart;
   const handleScan = useCallback((code) => {
     const scanned = String(code).trim();
-    const match = productsRef.current.find((p) => p.barcode && String(p.barcode).trim() === scanned);
+    const match = productsRef.current.find((p) => String(p.barcode || p.sku).trim() === scanned || p.sku === scanned);
 
     if (!match) {
       setScanMessage({ type: 'error', text: `Barcode not recognized: ${scanned}` });
@@ -253,6 +252,28 @@ export default function Billing() {
     setScanMessage({ type: 'success', text: `Added: ${match.name} · ${match.variant_label}` });
   }, []);
 
+  useEffect(() => {
+    if (confirmPayment || returnModalOpen || showShortcuts || receiptOrderId || scannerOpen || successOrder) return;
+    let buffer = '', last = 0, framed = false;
+    function read(event) {
+      if(event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
+      const now=performance.now();
+      if(now-last>500){buffer='';framed=false}
+      if(event.key==='F9'){framed=true;buffer='';last=now;event.preventDefault();event.stopImmediatePropagation();return}
+      if(!framed && event.target.closest?.('input,textarea,select,[contenteditable=true]')) return;
+      if(event.key==='Enter' && buffer){
+        const exact=productsRef.current.some(p=>p.sku===buffer||p.barcode===buffer);
+        if(exact||framed){event.preventDefault();event.stopImmediatePropagation();handleScan(buffer)}
+        buffer=''; framed=false;return;
+      }
+      if(event.key.length===1){
+        buffer=(now-last<100||framed?buffer:'')+event.key;last=now;
+        if(framed){event.preventDefault();event.stopImmediatePropagation()}
+      }
+    }
+    window.addEventListener('keydown',read,true);
+    return ()=>window.removeEventListener('keydown',read,true);
+  },[confirmPayment,returnModalOpen,showShortcuts,receiptOrderId,scannerOpen,successOrder,handleScan]);
   function updateQty(variant_id, qty) {
     setCart((prev) =>
       prev
@@ -260,7 +281,7 @@ export default function Billing() {
           if (l.variant_id !== variant_id) return l;
           const newQty = Math.min(Math.max(qty, 0), l.max_stock);
           const tier = getTierPrice(l.price_tiers, newQty, l.base_price);
-          const newPrice = tier ? tier.tier_price / tier.min_quantity : (l.base_price || l.unit_price);
+          const newPrice = l.overridePrice ?? (tier ? tier.tier_price / tier.min_quantity : (l.base_price ?? l.unit_price));
           return { ...l, quantity: newQty, unit_price: newPrice, active_tier: tier };
         })
         .filter((l) => l.quantity > 0),
@@ -268,10 +289,11 @@ export default function Billing() {
   }
 
   function updateUnitPrice(variant_id, price) {
-    setCart((prev) => prev.map((l) => l.variant_id === variant_id ? { ...l, unit_price: Math.max(0, price) } : l));
+    setCart((prev) => prev.map((l) => l.variant_id === variant_id ? { ...l, overridePrice: Math.max(0,price), unit_price: Math.max(0, price) } : l));
   }
 
   function removeLine(variant_id) {
+    setLastRemoved(cart.find(l=>l.variant_id===variant_id));
     setCart((prev) => prev.filter((l) => l.variant_id !== variant_id));
   }
 
@@ -295,14 +317,16 @@ export default function Billing() {
   }
 
   function toggleReturnSelection(item, qty) {
+    const quantity = Math.min(qty,item.returnable);
+    const unit_price = quantity>0 ? Math.round(item.remaining_refund_cents*quantity/item.returnable)/100/quantity : 0;
     setReturnSelections(prev => {
       const existing = prev.find(s => s.order_item_id === item.order_item_id);
       if (existing) {
         if (qty <= 0) return prev.filter(s => s.order_item_id !== item.order_item_id);
-        return prev.map(s => s.order_item_id === item.order_item_id ? { ...s, quantity: Math.min(qty, item.returnable) } : s);
+        return prev.map(s => s.order_item_id === item.order_item_id ? { ...s, quantity, unit_price } : s);
       }
       if (qty <= 0) return prev;
-      return [...prev, { order_item_id: item.order_item_id, variant_id: item.variant_id, quantity: Math.min(qty, item.returnable), product_name: item.product_name, variant_label: item.variant_label, unit_price: item.line_total / item.quantity, reason: '' }];
+      return [...prev, { order_item_id: item.order_item_id, variant_id: item.variant_id, quantity: Math.min(qty, item.returnable), product_name: item.product_name, variant_label: item.variant_label, unit_price, reason: '' }];
     });
   }
 
@@ -313,7 +337,7 @@ export default function Billing() {
       variant_label: s.variant_label,
       unit_price: s.unit_price,
       quantity: s.quantity,
-      order_item_id: s.order_item_id,
+      order_item_id: s.order_item_id,restock:s.restock!==false,
       isReturn: true,
     }));
     setCart(prev => [...prev.filter(l => !l.isReturn), ...negativeLines]);
@@ -322,11 +346,11 @@ export default function Billing() {
   }
 
   const returnTotal = useMemo(
-    () => cart.filter(l => l.isReturn).reduce((sum, l) => sum + l.unit_price * l.quantity, 0),
+    () => cart.filter(l => l.isReturn).reduce((sum, l) => sum + l.unit_price * l.quantity - lineDiscount(l), 0),
     [cart]
   );
   const newItemsTotal = useMemo(
-    () => cart.filter(l => !l.isReturn).reduce((sum, l) => sum + l.unit_price * l.quantity, 0),
+    () => cart.filter(l => !l.isReturn).reduce((sum, l) => sum + l.unit_price * l.quantity - lineDiscount(l), 0),
     [cart]
   );
   async function processReturn() {
@@ -340,7 +364,7 @@ export default function Billing() {
 
       const returnPayload = {
         original_order_id: returnOrder.id,
-        return_items: returnLines.map(l => ({ order_item_id: l.order_item_id, quantity: l.quantity, reason: 'Customer return' })),
+        return_items: returnLines.map(l => ({ order_item_id: l.order_item_id, quantity: l.quantity, restock:l.restock!==false, reason: 'Customer return' })),
         refund_method: netTotal < 0 ? returnRefundMethod : 'none',
         customer_id: customer?.id || null,
       };
@@ -355,8 +379,8 @@ export default function Billing() {
           channel: 'pos',
           customer_id: customer?.id || null,
           cashier_id: user?.id || null,
-          items: newLines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, discount_amount: 0 })),
-          discount_total: exchangeDiscount,
+          items: newLines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, discount_amount: lineDiscount(l) })),
+          discount_total: promoDiscount + manualDiscount,
           applied_promotions: appliedPromos,
           coupon_code: couponApplied || null,
           payments: exchangePayments,
@@ -375,7 +399,8 @@ export default function Billing() {
 
       const returnRes = await client.post('/orders/return-exchange', returnPayload);
       if (returnRes.data.data.replacement) {
-        setSuccessOrder(returnRes.data.data.replacement);
+        setLastRemoved(null);
+      setSuccessOrder(returnRes.data.data.replacement);
         setReceiptOrderId(returnRes.data.data.replacement.orderId);
       }
       const refundAmt = returnRes.data.data.refund_total;
@@ -388,6 +413,7 @@ export default function Billing() {
       }
 
       setReturnResult(returnRes.data.data);
+      setLastRemoved(null);
       setCart([]);
       setPayments([]);
       setReturnMode(false);
@@ -425,7 +451,7 @@ export default function Billing() {
     const timer = setTimeout(async () => {
       try {
         const r = await client.post('/promotions/calculate', {
-          items: cart.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price })),
+          items: cart.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, discount_amount:lineDiscount(l) })),
           couponCode: couponApplied || undefined,
         }, { signal: controller.signal });
         if (controller.signal.aborted) return;
@@ -442,7 +468,7 @@ export default function Billing() {
     setCouponLoading(true); setCouponError('');
     try {
       const r = await client.post('/promotions/calculate', {
-        items: cart.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price })),
+        items: cart.map(l => ({ variant_id: l.variant_id, quantity: l.quantity, unit_price: l.unit_price, discount_amount:lineDiscount(l) })),
         couponCode: couponCode.trim(),
       });
       if (r.data.data.couponError) {
@@ -464,7 +490,7 @@ export default function Billing() {
   }
 
   const subtotal = useMemo(
-    () => cart.reduce((sum, l) => sum + l.unit_price * l.quantity, 0),
+    () => cart.reduce((sum, l) => sum + l.unit_price * l.quantity - lineDiscount(l), 0),
     [cart],
   );
   const manualDiscount = useMemo(() => {
@@ -476,7 +502,10 @@ export default function Billing() {
   const effectiveDeliveryFee = freeDelivery ? 0 : deliveryFee;
   const applicablePromo = returnMode && newItemsTotal === 0 ? 0 : promoDiscount;
   const applicableManual = returnMode && newItemsTotal === 0 ? 0 : manualDiscount;
-  const grandTotal = returnMode ? newItemsTotal - applicablePromo - applicableManual + effectiveDeliveryFee - returnTotal : subtotal - promoDiscount - manualDiscount + effectiveDeliveryFee;
+  const redemption=customer && !returnMode && !wholesaleMode ? Number(redeemPoints)||0 : 0;
+  const grandTotal = returnMode ? newItemsTotal - applicablePromo - applicableManual + effectiveDeliveryFee - returnTotal : subtotal - promoDiscount - manualDiscount - redemption + effectiveDeliveryFee;
+  const externalCOD = fulfillment==='delivery' && deliveryMethod!=='self_delivery';
+  const payments = useMemo(()=>externalCOD ? [{method:'cod',amount:Math.max(0,grandTotal).toFixed(2)}] : draftPayments,[externalCOD,grandTotal,draftPayments]);
   const netTotal = newItemsTotal - applicablePromo - applicableManual + effectiveDeliveryFee - returnTotal;
 
   async function handleZoneChange(zoneId) {
@@ -497,6 +526,7 @@ export default function Billing() {
     () => payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0),
     [payments],
   );
+  const cashTendered = payments.filter(p=>p.method==='cash').reduce((sum,p)=>sum+(Number(p.amount)||0),0);
   const remaining = grandTotal - paidSoFar;
 
   function handleCustomerInput(value) {
@@ -573,6 +603,7 @@ export default function Billing() {
   }
 
   function clearCustomer() {
+    setRedeemPoints(0);
     setCustomer(null);
     setPhoneInput('');
     setCustomerSearchState('idle');
@@ -582,6 +613,7 @@ export default function Billing() {
     setPayments((prev) => prev.filter((p) => p.method !== 'store_credit' && p.method !== 'pay_later'));
   }
 
+  const keepRestoredTender = useRef(false);
   const [splitMode, setSplitMode] = useState(false);
 
   function setFullCash() {
@@ -614,7 +646,8 @@ export default function Billing() {
   }
 
   useEffect(() => {
-    if (!splitMode && payments.length === 1 && grandTotal > 0) {
+    if(keepRestoredTender.current){keepRestoredTender.current=false;return}
+    if (!externalCOD && !splitMode && payments.length === 1 && grandTotal > 0) {
       setPayments(prev => {
         const cur = parseFloat(prev[0]?.amount) || 0;
         if (Math.abs(cur - grandTotal) > 0.01) {
@@ -631,14 +664,80 @@ export default function Billing() {
   const storeCreditBlocked = payLaterBlocked;
 
   const deliveryFieldsValid = fulfillment === 'pickup' || (
-    receiverName.trim() && receiverPhone.trim() && receiverAddress.trim()
+    receiverName.trim() && receiverPhone.trim() && receiverAddress.trim() && (!externalCOD || (customer?.id && trackingNumber.trim() && getSelectedCourier()))
   );
 
-  const canCompleteSale =
+  const draftKey = 'littora.billing.v1.' + user.id;
+  const [draftReady,setDraftReady] = useState(false);
+  const [held,setHeld] = useState([]);
+  const [resumeOpen,setResumeOpen] = useState(false);
+  function restoreBill(bill) {
+    keepRestoredTender.current=true;
+    setCart(bill.cart);
+    setCustomerMode(bill.customerMode);
+    setPhoneInput(bill.phoneInput);
+    setCustomer(bill.customer);setRedeemPoints(bill.redeemPoints||0);
+    setCustomerSearchState('idle');
+    setNewCustomerName(bill.newCustomerName);
+    setRegisterAsLoyalty(bill.registerAsLoyalty);
+    setPayments((bill.payments||[]).filter(p=>p.method!=='cod'));
+    setSplitMode(bill.splitMode);
+    setFulfillment(bill.fulfillment);
+    setDeliveryMethod(bill.deliveryMethod);
+    setSelectedZone(bill.selectedZone);
+    setDeliveryFee(bill.deliveryFee);
+    setReceiverName(bill.receiverName);
+    setReceiverPhone(bill.receiverPhone);
+    setReceiverAddress(bill.receiverAddress);
+    setDeliveryNotes(bill.deliveryNotes);
+    setTrackingNumber(bill.trackingNumber);
+    setWholesaleMode(bill.wholesaleMode);
+    setFromQuotation(bill.fromQuotation);
+    setCouponCode(bill.couponCode);
+    setCouponApplied(bill.couponApplied);
+    setManualDiscountType(bill.manualDiscountType);
+    setManualDiscountValue(bill.manualDiscountValue);
+    setReturnMode(bill.returnMode);
+    setReturnOrder(bill.returnOrder);
+    setReturnItems(bill.returnItems);
+    setReturnSelections(bill.returnSelections);
+    setReturnRefundMethod(bill.returnRefundMethod);
+    setLastRemoved(null);setSearch('');setSuccessOrder(null);
+  }
+  const billSnapshot = useMemo(()=>({redeemPoints,cart, customerMode, phoneInput, customer, newCustomerName, registerAsLoyalty, payments, splitMode, fulfillment, deliveryMethod, selectedZone, deliveryFee, receiverName, receiverPhone, receiverAddress, deliveryNotes, trackingNumber, wholesaleMode, fromQuotation, couponCode, couponApplied, manualDiscountType, manualDiscountValue, returnMode, returnOrder, returnItems, returnSelections, returnRefundMethod}),[redeemPoints,cart, customerMode, phoneInput, customer, newCustomerName, registerAsLoyalty, payments, splitMode, fulfillment, deliveryMethod, selectedZone, deliveryFee, receiverName, receiverPhone, receiverAddress, deliveryNotes, trackingNumber, wholesaleMode, fromQuotation, couponCode, couponApplied, manualDiscountType, manualDiscountValue, returnMode, returnOrder, returnItems, returnSelections, returnRefundMethod]);
+  useEffect(()=>{
+    try {
+      const draft=JSON.parse(sessionStorage.getItem(draftKey)||'null');
+      if(draft?.cart?.length && !searchParams.has('from_quotation'))restoreBill(draft);
+      setHeld(JSON.parse(sessionStorage.getItem(draftKey+'.held')||'[]'));
+    } catch {toast.info('Could not restore the local bill')}
+    setDraftReady(true);
+  },[draftKey]);
+  useEffect(()=>{
+    if(!draftReady)return;
+    try {
+      if(cart.length)sessionStorage.setItem(draftKey,JSON.stringify(billSnapshot));
+      else sessionStorage.removeItem(draftKey);
+    } catch {toast.error('Browser storage unavailable. Keep this bill open.')}
+  },[billSnapshot,draftReady,draftKey]);
+  function saveHeld(next) {
+    try {sessionStorage.setItem(draftKey+'.held',JSON.stringify(next));setHeld(next);return true}
+    catch {toast.error('Could not store held bills');return false}
+  }
+  function holdBill() {
+    if(!cart.length){setResumeOpen(true);return}
+    const entry={id:crypto.randomUUID(),time:new Date().toISOString(),bill:billSnapshot};
+    if(!saveHeld([entry,...held]))return;
+    setCart([]);setLastRemoved(null);clearCustomer();resetDelivery();setFulfillment('pickup');setDeliveryNotes('');
+    setPayments([]);setSplitMode(false);setManualDiscountValue('');setCouponCode('');setCouponApplied(null);setPromoDiscount(0);
+    setReturnMode(false);setReturnOrder(null);setReturnSelections([]);setReturnItems([]);setFromQuotation(null);setWholesaleMode(false);
+    setSearch('');toast.info('Bill held');searchRef.current?.focus();
+  }
+  const canCompleteSale = !returnMode &&
     cart.length > 0 &&
     payments.length > 0 &&
     payments.every((p) => p.method && parseFloat(p.amount) > 0) &&
-    Math.abs(remaining) < 0.5 &&
+    Math.round(remaining*100) <= 0 && Math.round((remaining+cashTendered)*100) >= 0 &&
     !storeCreditBlocked &&
     deliveryFieldsValid &&
     !submitting;
@@ -717,7 +816,7 @@ export default function Billing() {
     }
     
     const paymentsTotal = paymentsWithValidAmounts.reduce((sum, p) => sum + p.amount, 0);
-    if (Math.abs(paymentsTotal - grandTotal) > 0.5) {
+    if (Math.round((paymentsTotal-grandTotal)*100)<0 || Math.round((paymentsTotal-cashTendered-grandTotal)*100)>0) {
       toast.error(`Payment total (Rs. ${paymentsTotal.toFixed(2)}) doesn't match order total (Rs. ${grandTotal.toFixed(2)})`);
       return;
     }
@@ -742,9 +841,11 @@ export default function Billing() {
           variant_id: l.variant_id,
           quantity: Number(l.quantity),
           unit_price: Number(l.unit_price),
-          discount_amount: 0,
+          discount_amount: lineDiscount(l),
         })),
         discount_total: Number(promoDiscount + manualDiscount) || 0,
+        coupon_code: couponApplied || null,
+        wholesale:wholesaleMode, redeem_points:redemption,
         payments: paymentsWithValidAmounts.map((p) => ({
           payment_method: p.method,
           amount: p.amount,
@@ -779,8 +880,11 @@ export default function Billing() {
         }
         setFromQuotation(null);
       }
+      setLastRemoved(null);
+      pendingPrint.current = orderData.orderId;
       setSuccessOrder(orderData);
       setReceiptOrderId(orderData.orderId);
+      setLastRemoved(null);
       setCart([]);
       setPayments([]);
       clearCustomer();
@@ -790,7 +894,7 @@ export default function Billing() {
       setManualDiscountValue('');
       setWholesaleMode(false);
       loadProducts();
-      loadBestSellers();
+
       toast.success(`Sale complete — ${orderData.order_number}`);
     } catch (err) {
       setError(err.response?.data?.message ?? 'Checkout failed');
@@ -839,23 +943,25 @@ export default function Billing() {
   const selectedCourier = getSelectedCourier();
   const ic = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-brand-500';
 
+  const modalActive = submitting || confirmPayment || scannerOpen || receiptOrderId || returnModalOpen || showShortcuts || successOrder || resumeOpen;
   useKeyboardShortcuts([
     { key: 'F1', action: () => setShowShortcuts(v => !v), allowInInput: true },
-    { key: 'F2', action: () => { setCart([]); setSearch(''); clearCustomer(); resetDelivery(); setAppliedPromos([]); setPromoDiscount(0); setFreeDelivery(false); setCouponApplied(null); setCouponCode(''); setPayments([]); setSuccessOrder(null); setManualDiscountValue(''); setReturnMode(false); setReturnOrder(null); setReturnSelections([]); setReturnItems([]); setReturnResult(null); setWholesaleMode(false); searchRef.current?.focus(); toast.info('New sale'); }, allowInInput: true },
-    { key: 'F3', action: () => { setCustomerMode('loyalty'); setTimeout(() => phoneRef.current?.focus(), 100); }, allowInInput: true },
+    { key: 'F2', action: () => { if(!window.confirm('Cancel this bill and clear its items, customer and payment details?')) return; setLastRemoved(null);setCart([]); setSearch(''); clearCustomer(); resetDelivery(); setAppliedPromos([]); setPromoDiscount(0); setFreeDelivery(false); setCouponApplied(null); setCouponCode(''); setPayments([]); setSuccessOrder(null); setManualDiscountValue(''); setReturnMode(false); setReturnOrder(null); setReturnSelections([]); setReturnItems([]); setReturnResult(null); setWholesaleMode(false); searchRef.current?.focus(); toast.info('Bill cancelled'); }, allowInInput: false },
+    { key: 'F3', action: () => { toast.info('Cash drawer hardware is not configured'); }, allowInInput: true },
     { key: 'F4', action: () => { setScanMessage(null); setScannerOpen(true); }, allowInInput: true },
-    { key: 'Escape', action: () => { if (showShortcuts) setShowShortcuts(false); else if (scannerOpen) setScannerOpen(false); else if (receiptOrderId) setReceiptOrderId(null); else if (successOrder) setSuccessOrder(null); }, allowInInput: true },
-    { key: 'Enter', ctrl: true, action: () => { if (canCompleteSale) completeSale(); }, allowInInput: true },
+    { key: 'Escape', action: () => { if (resumeOpen) setResumeOpen(false); else if (confirmPayment) setConfirmPayment(false); else if(returnModalOpen)setReturnModalOpen(false); else if (showShortcuts) setShowShortcuts(false); else if (scannerOpen) setScannerOpen(false); else if (receiptOrderId) setReceiptOrderId(null); else if (successOrder) setSuccessOrder(null); else setSearch(''); }, allowInInput: true },
+    { key: 'Enter', ctrl: true, action: () => { if (canCompleteSale) setConfirmPayment(true); }, allowInInput: true },
     { key: 'k', ctrl: true, action: () => { searchRef.current?.focus(); searchRef.current?.select(); }, allowInInput: true },
-    { key: 'd', ctrl: true, action: () => handleFulfillmentChange(fulfillment === 'pickup' ? 'delivery' : 'pickup'), allowInInput: true },
+    { key: 'Delete', action: () => { if(selectedLine && !confirmPayment)removeLine(selectedLine) }, allowInInput:false },
+    { key: 'F7', action: holdBill, allowInInput:true },
+    { key: 'F8', action: () => {if(!hasPermission('refunds')){toast.error('Refund permission required');return}setReturnModalOpen(true);setReturnSearch('');setReturnSearchResults([]);setReturnOrder(null)}, allowInInput:true },
     { key: '?', action: () => setShowShortcuts(v => !v) },
-  ], [showShortcuts, scannerOpen, receiptOrderId, successOrder, canCompleteSale, fulfillment]);
+  ].filter(shortcut=>!modalActive || shortcut.key==='Escape'), [returnModalOpen, showShortcuts, scannerOpen, receiptOrderId, successOrder, canCompleteSale, fulfillment, search, confirmPayment, cart, selectedLine, billSnapshot, held, resumeOpen]);
 
   return (
     <PageWrapper className="flex h-full flex-col bg-slate-50 dark:bg-slate-950">
-      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
-        {/* Left: product search + grid */}
-        <div className="flex min-h-[50vh] flex-1 flex-col overflow-hidden border-b border-slate-200 dark:border-slate-800 md:min-h-0 md:w-2/3 md:border-b-0 md:border-r">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0">
           <div className="border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:p-4">
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -864,7 +970,13 @@ export default function Billing() {
                   ref={searchRef}
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {setSearch(e.target.value);setActiveResult(0)}}
+                  aria-label="Search items and variants" role="combobox" aria-expanded={!!search} aria-controls="billing-results"
+                  aria-activedescendant={filteredProducts[activeResult] ? 'result-'+activeResult : undefined}
+                  onKeyDown={e=>{
+                    if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();setActiveResult(i=>Math.max(0,Math.min(filteredProducts.length-1,i+(e.key==='ArrowDown'?1:-1))))}
+                    if(e.key==='Enter'){e.preventDefault();chooseVariant(filteredProducts[activeResult])}
+                  }}
                   placeholder="Search by name, SKU, or barcode... (Ctrl+K)"
                   className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-brand-500 dark:focus:ring-brand-900/40"
                   autoFocus
@@ -878,7 +990,7 @@ export default function Billing() {
                 <span className="hidden sm:inline">Scan</span>
               </button>
               <button
-                onClick={() => { setReturnModalOpen(true); setReturnSearch(''); setReturnSearchResults([]); setReturnOrder(null); }}
+                disabled={!hasPermission('refunds')} onClick={() => { setReturnModalOpen(true); setReturnSearch(''); setReturnSearchResults([]); setReturnOrder(null); }}
                 className="flex shrink-0 items-center gap-2 rounded-xl bg-amber-500 px-3.5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-amber-600 active:scale-[0.97]"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
@@ -887,72 +999,108 @@ export default function Billing() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 md:p-4">
-            {allTags.length > 0 && (
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                <button onClick={() => setTagFilter('')}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${!tagFilter ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}`}>
-                  All
-                </button>
-                {allTags.map(t => (
-                  <button key={t} onClick={() => setTagFilter(tagFilter === t ? '' : t)}
-                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${tagFilter === t ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            )}
-            {!search && !tagFilter && bestSellers.length > 0 && (
-              <div className="mb-5">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Best sellers (7 days)
-                </h3>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-                  {bestSellers.map((p) => (
-                    <ProductTile
-                      key={p.variant_id}
-                      name={p.product_name}
-                      label={p.variant_label}
-                      price={wholesaleMode && p.wholesale_price ? p.wholesale_price : p.retail_price}
-                      stock={p.current_stock}
-                      onClick={() => addToCart(p)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              {search ? `Results for "${search}"` : 'All products'}
-            </h3>
-            {loadingProducts ? (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-                {[1,2,3,4,5,6].map(i => (
-                  <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
-                ))}
-              </div>
-            ) : filteredProducts.length === 0 ? (
-              <EmptyState icon="🔍" title="No products found" description={search ? 'Try a different search term' : 'Add products in Inventory'} />
-            ) : (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-                {filteredProducts.map((p) => (
-                  <ProductTile
-                    key={p.variant_id}
-                    name={p.name}
-                    label={p.variant_label}
-                    price={wholesaleMode && p.wholesale_price ? p.wholesale_price : p.retail_price}
-                    stock={p.current_stock}
-                    onClick={() => addToCart(p)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          {search && <div id="billing-results" role="listbox" className="max-h-56 overflow-auto border-b">
+            {filteredProducts.map((p,i)=><button key={p.variant_id} role="option" id={'result-'+i} aria-selected={i===activeResult} disabled={p.current_stock<=0}
+              className={'block w-full px-4 py-2 text-left disabled:opacity-50 '+(i===activeResult?'bg-brand-100 dark:bg-slate-700':'')}
+              onClick={()=>chooseVariant(p)}>{p.name} · {p.variant_label} · {p.sku} · {money(wholesaleMode && Number(p.wholesale_price)>0?p.wholesale_price:p.retail_price)} · {p.current_stock} available{p.price_tiers?.map(t=>` · ${t.min_quantity} for ${money(t.tier_price)}`).join('')}</button>)}
+            {!filteredProducts.length && <p className="p-3">{loadingProducts?'Loading variants…':'No matching variants'}</p>}
+          </div>}
+          <button className="mx-4 text-sm underline" onClick={()=>setShowShortcuts(true)}>Keyboard shortcuts</button>
+          <button className="mx-3 underline" onClick={holdBill}>{cart.length?'Hold bill':'Resume held bill'} ({held.length})</button>
+          {resumeOpen && <div className="p-3" aria-label="Held bills">
+            {held.length===0 && <p>No held bills in this tab.</p>}
+            {held.map(h=><button key={h.id} className="block py-1" onClick={()=>{
+              if(cart.length){toast.info('Hold the current bill first');return}
+              restoreBill(h.bill);saveHeld(held.filter(x=>x.id!==h.id));setResumeOpen(false);
+            }}>{new Date(h.time).toLocaleTimeString()} · {h.bill.customer?.full_name||'Walk-in'} · {h.bill.cart[0]?.product_name} · {h.id.slice(0,6)}</button>)}
+            <button onClick={()=>setResumeOpen(false)}>Close held bills</button>
+          </div>}
+          {scanMessage && <span role="status">{scanMessage.text}</span>}
         </div>
-
         {/* Right: cart + customer + payment + fulfillment */}
-        <div className="flex flex-col overflow-hidden bg-white dark:bg-slate-900 md:w-1/3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-slate-900">
           <div className="flex-1 overflow-y-auto p-3 md:p-4">
+            {/* Cart */}
+            {fromQuotation && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
+                <span className="text-amber-400 text-sm font-medium">Converting Quotation {fromQuotation.quotation_number}</span>
+                <button onClick={() => { setFromQuotation(null); setCart([]); clearCustomer(); setManualDiscountValue(''); setWholesaleMode(false); }}
+                  className="ml-auto text-xs text-slate-400 hover:text-red-400">Cancel</button>
+              </div>
+            )}
+            <section className="mb-5">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Cart ({cart.length})
+              </h3>
+              {lastRemoved && <button onClick={()=>{setCart(prev=>prev.some(l=>l.variant_id===lastRemoved.variant_id)?prev:[...prev,lastRemoved]);setLastRemoved(null)}}>Undo removal · {lastRemoved.sku}</button>}
+              {cart.length === 0 ? (
+                <EmptyState icon="🛒" title="Cart is empty" description="Click a product or scan a barcode to add items" />
+              ) : (
+                <div className="space-y-2 overflow-x-auto">
+                  <div className="grid min-w-[42rem] grid-cols-[minmax(10rem,1fr)_7rem_6rem_9rem_7rem_2rem] gap-2 px-3 text-xs font-bold"><span>Item / variant</span><span>Qty</span><span>MRP</span><span>Discount</span><span>Total</span></div>
+                  <AnimatePresence initial={false}>
+                    {cart.map((l) => (
+                      <motion.div
+                        key={l.variant_id}
+                        layout
+                        initial={{ opacity: 0, x: -16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                        transition={{ duration: 0.2 }}
+                        tabIndex={0} onFocus={()=>setSelectedLine(l.variant_id)} onClick={()=>setSelectedLine(l.variant_id)}
+                        className={`grid min-w-[42rem] grid-cols-[minmax(10rem,1fr)_7rem_6rem_9rem_7rem_2rem] items-center gap-2 rounded-xl border p-2.5 ${selectedLine===l.variant_id?'ring-1 ring-inset ring-brand-500':''}  ${l.isReturn ? 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-900/20' : 'border-slate-200 dark:border-slate-700'}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          {l.isReturn && <span className="text-[10px] font-bold uppercase text-red-500">Return</span>}
+                          <p className={`truncate text-sm font-medium ${l.isReturn ? 'text-red-700 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>{l.product_name}</p>
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {l.variant_label}
+                            {l.active_tier && <span className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">{l.active_tier.label || `${l.active_tier.min_quantity}pk tier`}</span>}
+                            {' '}· Selling price
+                            {isOwner && !l.isReturn ? (
+                              <input aria-label="Selling price" type="number" value={l.unit_price} step="0.01" min="0"
+                                onChange={(e) => updateUnitPrice(l.variant_id, parseFloat(e.target.value) || 0)}
+                                className="inline-block w-20 rounded border border-transparent bg-transparent px-0.5 font-mono text-xs text-slate-500 outline-none transition hover:border-slate-300 focus:border-brand-400 dark:text-slate-400 dark:hover:border-slate-600" />
+                            ) : (
+                              <span className="font-mono">{money(l.unit_price)}</span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => updateQty(l.variant_id, l.quantity - 1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:hover:bg-slate-800">
+                            −
+                          </button>
+                          <input aria-label="Quantity" type="number" value={l.quantity} min="1" max={l.max_stock}
+                            onChange={(e) => updateQty(l.variant_id, parseInt(e.target.value) || 0)}
+                            className="w-10 rounded-lg border border-slate-200 bg-transparent text-center text-sm font-medium outline-none transition focus:border-brand-400 dark:border-slate-700 dark:text-white" />
+                          <button onClick={() => updateQty(l.variant_id, l.quantity + 1)}
+                            disabled={l.quantity >= l.max_stock}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 active:scale-95 disabled:opacity-30 dark:border-slate-700 dark:hover:bg-slate-800">
+                            +
+                          </button>
+                        </div>
+                        <span>{l.mrp==null?'—':money(l.mrp)}</span>
+                        {l.isReturn ? <span>—</span> : <div>
+                          <select aria-label="Discount basis" value={l.discountScope||'line'} onChange={e=>setCart(prev=>prev.map(x=>x===l?{...x,discountScope:e.target.value}:x))}>
+                            <option value="line">Whole line</option><option value="unit">Per unit</option>
+                          </select>
+                          <input aria-label="Discount amount" className="w-24 border" type="number" min="0" step="0.01" value={l.discountValue??''} placeholder="0.00"
+                            onChange={e=>setCart(prev=>prev.map(x=>x===l?{...x,discountValue:e.target.value}:x))}/>
+                        </div>}
+                        <p className={`w-20 shrink-0 text-right font-mono text-sm font-medium ${l.isReturn ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                          {l.isReturn ? `−${money(l.unit_price * l.quantity)}` : money(l.unit_price * l.quantity-lineDiscount(l))}
+                        </p>
+                        <button aria-label="Remove line" onClick={() => removeLine(l.variant_id)} className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
+            </section>
+
             {/* Wholesale toggle (owner only) */}
             {user?.role === 'owner' && (
               <div className="mb-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
@@ -1041,7 +1189,7 @@ export default function Billing() {
                       <span className="text-sm font-semibold text-slate-900 dark:text-white">Walk-in</span>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500">No details needed</p>
                     </button>
-                    <button onClick={() => { setCustomerMode('loyalty'); setTimeout(() => phoneRef.current?.focus(), 100); }}
+                    <button onClick={() => { setCustomerMode('loyalty'); setTimeout(()=>phoneRef.current?.focus(),100); }}
                       className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${customerMode === 'loyalty' ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-900/20' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'}`}>
                       <span className="text-sm font-semibold text-slate-900 dark:text-white">Loyalty</span>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500">Search by phone</p>
@@ -1069,7 +1217,7 @@ export default function Billing() {
                         onChange={(e) => handleCustomerInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') { setShowSuggestions(false); lookupCustomer(); } if (e.key === 'Escape') setShowSuggestions(false); }}
                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                        placeholder="Phone or name (F3)"
+                        placeholder="Phone or name"
                         className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-brand-500"
                       />
                       <button onClick={lookupCustomer}
@@ -1147,78 +1295,11 @@ export default function Billing() {
               </motion.div>
             )}
 
-            {/* Cart */}
-            {fromQuotation && (
-              <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
-                <span className="text-amber-400 text-sm font-medium">Converting Quotation {fromQuotation.quotation_number}</span>
-                <button onClick={() => { setFromQuotation(null); setCart([]); clearCustomer(); setManualDiscountValue(''); setWholesaleMode(false); }}
-                  className="ml-auto text-xs text-slate-400 hover:text-red-400">Cancel</button>
-              </div>
-            )}
-            <section className="mb-5">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Cart ({cart.length})
-              </h3>
-              {cart.length === 0 ? (
-                <EmptyState icon="🛒" title="Cart is empty" description="Click a product or scan a barcode to add items" />
-              ) : (
-                <div className="space-y-2">
-                  <AnimatePresence initial={false}>
-                    {cart.map((l) => (
-                      <motion.div
-                        key={l.variant_id}
-                        layout
-                        initial={{ opacity: 0, x: -16 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className={`flex items-center gap-2 rounded-xl border p-2.5 ${l.isReturn ? 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-900/20' : 'border-slate-200 dark:border-slate-700'}`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          {l.isReturn && <span className="text-[10px] font-bold uppercase text-red-500">Return</span>}
-                          <p className={`truncate text-sm font-medium ${l.isReturn ? 'text-red-700 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>{l.product_name}</p>
-                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                            {l.variant_label}
-                            {l.active_tier && <span className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">{l.active_tier.label || `${l.active_tier.min_quantity}pk tier`}</span>}
-                            {' '}·{' '}
-                            {isOwner && !l.isReturn ? (
-                              <input type="number" value={l.unit_price} step="0.01" min="0"
-                                onChange={(e) => updateUnitPrice(l.variant_id, parseFloat(e.target.value) || 0)}
-                                className="inline-block w-20 rounded border border-transparent bg-transparent px-0.5 font-mono text-xs text-slate-500 outline-none transition hover:border-slate-300 focus:border-brand-400 dark:text-slate-400 dark:hover:border-slate-600" />
-                            ) : (
-                              <span className="font-mono">{money(l.unit_price)}</span>
-                            )}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => updateQty(l.variant_id, l.quantity - 1)}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:hover:bg-slate-800">
-                            −
-                          </button>
-                          <input type="number" value={l.quantity} min="1" max={l.max_stock}
-                            onChange={(e) => updateQty(l.variant_id, parseInt(e.target.value) || 0)}
-                            className="w-10 rounded-lg border border-slate-200 bg-transparent text-center text-sm font-medium outline-none transition focus:border-brand-400 dark:border-slate-700 dark:text-white" />
-                          <button onClick={() => updateQty(l.variant_id, l.quantity + 1)}
-                            disabled={l.quantity >= l.max_stock}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 active:scale-95 disabled:opacity-30 dark:border-slate-700 dark:hover:bg-slate-800">
-                            +
-                          </button>
-                        </div>
-                        <p className={`w-20 shrink-0 text-right font-mono text-sm font-medium ${l.isReturn ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
-                          {l.isReturn ? `−${money(l.unit_price * l.quantity)}` : money(l.unit_price * l.quantity)}
-                        </p>
-                        <button onClick={() => removeLine(l.variant_id)} className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-              )}
-            </section>
-
+            {customer && !wholesaleMode && !returnMode && <label className="block">Redeem loyalty points (1,000–10,000)
+              <input type="number" min="0" max={Math.min(10000,customer.loyalty_points_balance)} value={redeemPoints} onChange={e=>setRedeemPoints(e.target.value)}/></label>}
+            {externalCOD && <p className="mb-5">Courier collects {money(Math.max(0,grandTotal))} on delivery. A saved customer and tracking number are required.</p>}
             {/* Payments */}
-            {cart.length > 0 && (
+            {cart.length > 0 && !externalCOD && (
               <section className="mb-5">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Payment</h3>
                 <div className="mb-3 flex gap-2">
@@ -1546,8 +1627,8 @@ export default function Billing() {
               <span className="font-mono">{money(grandTotal)}</span>
             </div>
             <div className="mb-3 flex justify-between text-xs text-slate-400">
-              <span>Remaining</span>
-              <span className={`font-mono ${Math.abs(remaining) < 0.5 ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>{money(remaining)}</span>
+              <span>{remaining < 0 ? "Change" : "Remaining"}</span>
+              <span className={`font-mono ${Math.abs(remaining) < 0.5 ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>{money(Math.abs(remaining))}</span>
             </div>
 
             {/* Outstanding credit block */}
@@ -1655,7 +1736,7 @@ export default function Billing() {
               </>
             ) : (
             <div className="flex gap-2">
-              <button onClick={completeSale} disabled={!canCompleteSale}
+              <button onClick={()=>setConfirmPayment(true)} disabled={!canCompleteSale}
                 className="flex-1 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 py-3 text-sm font-semibold text-white shadow-md shadow-brand-500/20 transition-all duration-200 hover:shadow-lg hover:shadow-brand-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
                 {submitting ? (
                   <span className="flex items-center justify-center gap-2">
@@ -1746,12 +1827,14 @@ export default function Billing() {
                           <div className="flex items-start justify-between">
                             <div>
                               <p className="text-sm font-medium text-slate-900 dark:text-white">{item.product_name}</p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">{item.variant_label} · {money(item.line_total / item.quantity)} each</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{item.variant_label} · {item.remaining_refund_cents==null?'Owner review required: original discount allocation missing':'Refund remaining: '+money(item.remaining_refund_cents / 100)}</p>
                               <p className="text-xs text-slate-400 mt-0.5">
                                 Ordered: {item.quantity} · Returned: {item.already_returned} · Returnable: {item.returnable}
                               </p>
                             </div>
-                            {item.returnable > 0 && (
+                            {sel && <label>Disposition <select value={sel.restock===false?'hold':'stock'} onChange={e=>setReturnSelections(prev=>prev.map(x=>x.order_item_id===sel.order_item_id?{...x,restock:e.target.value==='stock'}:x))}>
+                              <option value="stock">Saleable</option><option value="hold">Damaged / quarantine</option></select></label>}
+                            {item.returnable > 0 && item.remaining_refund_cents!=null && (
                               <div className="flex items-center gap-2">
                                 <input type="number" min="0" max={item.returnable} value={sel?.quantity || 0}
                                   onChange={e => toggleReturnSelection(item, parseInt(e.target.value) || 0)}
@@ -1803,9 +1886,17 @@ export default function Billing() {
         </BarcodeScanner>
       )}
 
-      {receiptOrderId && <Receipt orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
+      {receiptOrderId && <Receipt pendingPrint={pendingPrint} orderId={receiptOrderId} onClose={() => setReceiptOrderId(null)} />}
       {quotationId && <Quotation quotationId={quotationId} onClose={() => setQuotationId(null)} />}
 
+      {confirmPayment && <div className="fixed inset-0 z-[210] grid place-items-center bg-black/50" role="dialog" aria-modal="true" aria-label="Confirm payment">
+        <div className="rounded-xl bg-white p-6 text-slate-900"><h2>Confirm payment · {money(grandTotal)}</h2>
+        {payments.map(p=><p key={p.method}>{p.method==='cod'?'Courier COD':p.method}: {money(p.amount)}</p>)}
+        {remaining<0 && <p>Change: {money(-remaining)}</p>}
+        <button autoFocus onKeyDown={e=>{
+          if(e.key==='Enter'){e.preventDefault();if(!e.repeat&&!e.ctrlKey&&!e.metaKey)e.currentTarget.click()}
+        }} className="mr-4 rounded bg-brand-600 p-2 text-white" onClick={()=>{setConfirmPayment(false);if(canCompleteSale)completeSale()}}>Confirm sale</button>
+        <button onClick={()=>setConfirmPayment(false)}>Back</button></div></div>}
       {/* Keyboard shortcuts help */}
       <AnimatePresence>
         {showShortcuts && (
@@ -1823,13 +1914,13 @@ export default function Billing() {
               <div className="space-y-2">
                 {[
                   ['F1', 'Show / hide this help'],
-                  ['F2', 'New sale (clear everything)'],
-                  ['F3', 'Focus customer phone lookup'],
+                  ['F2', 'Cancel bill (outside editors; confirmation required)'],
+                  ['F3', 'Cash drawer (requires configured hardware)'],
                   ['F4', 'Open barcode scanner'],
                   ['Esc', 'Close modal / dismiss'],
-                  ['Ctrl + Enter', 'Complete sale'],
+                  ['Ctrl + Enter', 'Review payment; Enter on Confirm sale completes it'],
                   ['Ctrl + K', 'Focus product search'],
-                  ['Ctrl + D', 'Toggle pickup / delivery'],
+                  ['Delete', 'Remove selected line outside an editor'], ['F7', 'Hold current bill or resume when empty'], ['F8', 'Open returns'], ['F9 … Enter', 'Scanner prefix and suffix for protected entry while editing'],
                   ['?', 'Show / hide this help'],
                 ].map(([key, desc]) => (
                   <div key={key} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
@@ -1889,26 +1980,5 @@ function ScanIcon() {
       <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
       <line x1="7" y1="12" x2="17" y2="12" />
     </svg>
-  );
-}
-
-function ProductTile({ name, label, price, stock, onClick }) {
-  const outOfStock = stock <= 0;
-  return (
-    <motion.button
-      whileTap={{ scale: 0.97 }}
-      onClick={onClick}
-      disabled={outOfStock}
-      className="flex flex-col items-start rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-brand-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-brand-600"
-    >
-      <p className="line-clamp-2 text-sm font-medium text-slate-900 dark:text-white">{name}</p>
-      <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">{label}</p>
-      <div className="mt-auto flex w-full items-center justify-between">
-        <span className="font-mono text-sm font-semibold text-brand-600 dark:text-brand-400">{money(price)}</span>
-        <span className={`text-xs ${outOfStock ? 'text-red-500' : stock <= 5 ? 'text-amber-500' : 'text-slate-400'}`}>
-          {outOfStock ? 'Out of stock' : `${stock} left`}
-        </span>
-      </div>
-    </motion.button>
   );
 }

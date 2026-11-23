@@ -608,13 +608,20 @@ function PurchaseReport() {
 function SettlementReport() {
   const [summaries, setSummaries] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [collections,setCollections]=useState(null);
+  const [sourceReceipt,setSourceReceipt]=useState(null);
+  const [receiptDate,setReceiptDate]=useState(''),[charges,setCharges]=useState({});
+  const [allocations,setAllocations]=useState({}),[preview,setPreview]=useState(null);
+  const [history,setHistory]=useState([]),[search,setSearch]=useState('');
   const [activeCourier, setActiveCourier] = useState(null);
   const [loading, setLoading] = useState(true);
   const [settleAmount, setSettleAmount] = useState('');
+  useEffect(()=>setPreview(null),[allocations,settleAmount]);
   const [settleNote, setSettleNote] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [settling, setSettling] = useState(false);
-  const { addToast } = useToast();
+  const toast = useToast();
+  const [method,setMethod]=useState('bank_transfer'),[account,setAccount]=useState('');
 
   useEffect(() => { loadSummaries(); }, []);
 
@@ -623,19 +630,19 @@ function SettlementReport() {
     try {
       const res = await client.get('/settlements/summaries');
       setSummaries(res.data.data || []);
-    } catch { addToast('Failed to load settlement data', 'error'); }
+    } catch { toast.error('Failed to load settlement data'); }
     finally { setLoading(false); }
   }
 
   async function loadOrders(code) {
-    setActiveCourier(code);
+    setActiveCourier(code);setOrders([]);setHistory([]);setSearch('');
     setSelectedIds(new Set());
     setSettleAmount('');
     setSettleNote('');
     try {
-      const res = await client.get(`/settlements/${code.toLowerCase()}/orders`);
-      setOrders(res.data.data || []);
-    } catch { addToast('Failed to load orders', 'error'); }
+      const [res,ledger]=await Promise.all([client.get(`/settlements/${code.toLowerCase()}/orders`),client.get(`/settlements/${code.toLowerCase()}/history`)]);
+      setOrders(res.data.data || []);setHistory(ledger.data.data||[]);
+    } catch { toast.error('Failed to load orders'); }
   }
 
   function toggleOrder(id) {
@@ -646,31 +653,36 @@ function SettlementReport() {
     });
   }
 
+  const visibleOrders=orders.filter(o=>[o.order_number,o.tracking_number].some(v=>String(v||'').toLowerCase().includes(search.trim().toLowerCase())));
+  const selectable=visibleOrders.filter(o=>o.item_value!=null);
   function selectAll() {
-    if (selectedIds.size === orders.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(orders.map(o => o.delivery_id)));
+    const remove=selectable.every(o=>selectedIds.has(o.delivery_id));
+    const next=new Set(selectedIds);
+    for(const order of selectable){if(remove)next.delete(order.delivery_id);else next.add(order.delivery_id)}
+    setSelectedIds(next);
   }
 
   useEffect(() => {
-    const total = orders.filter(o => selectedIds.has(o.delivery_id)).reduce((s, o) => s + o.item_value, 0);
+    const total = orders.filter(o => selectedIds.has(o.delivery_id)).reduce((s, o) => s + o.remaining, 0);
     if (selectedIds.size > 0) setSettleAmount(total.toFixed(2));
   }, [selectedIds, orders]);
 
-  async function submitSettlement(e) {
+  async function submitSettlement(e,previewOnly=false) {
     e.preventDefault();
     const amt = parseFloat(settleAmount);
     if (!amt || amt <= 0 || !activeCourier) return;
     setSettling(true);
     try {
-      await client.post(`/settlements/${activeCourier.toLowerCase()}/settle`, {
-        amount: amt,
+      const response=await client.post(`/settlements/${activeCourier.toLowerCase()}/${previewOnly?'preview':'settle'}`, {
+        source_receipt_id:sourceReceipt?.id,business_receipt_date:receiptDate||undefined,amount: amt,method,account,allocations:[...selectedIds].map(id=>({delivery_id:id,amount:Number(allocations[id]||0),...charges[id]})),
         delivery_ids: [...selectedIds],
         notes: settleNote || undefined,
       });
-      addToast(`Settlement of Rs. ${amt.toLocaleString('en-LK')} recorded`, 'success');
+      if(previewOnly){setPreview(response.data.data);return}
+      toast.success(`Settlement of Rs. ${amt.toLocaleString('en-LK')} recorded`);
       setActiveCourier(null);
       loadSummaries();
-    } catch (err) { addToast(err.response?.data?.message || 'Failed', 'error'); }
+    } catch (err) { toast.error(err.response?.data?.message || 'Settlement failed'); }
     finally { setSettling(false); }
   }
 
@@ -678,6 +690,13 @@ function SettlementReport() {
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
+      <section className="rounded-xl border p-4">
+        <button onClick={async()=>{try{const r=await client.get('/settlements/collections');setCollections(r.data.data)}catch(e){toast.error(e.response?.data?.message||'Owner access required')}}}>Load courier and credit collected-sales report</button>
+        <p className="mt-2 text-xs text-slate-500">Credit and courier merchandise collections only. Unknown cost includes receipts without an original recorded collection-cost allocation; historical profit is not inferred. This view does not yet combine counter receipts, refunds or operating expenses.</p>
+        <p>Reconciled merchandise receipts by business receipt date. Unknown FIFO costs require review.</p>
+        {collections && <table className="w-full text-left"><thead><tr><th>Date</th><th>Collected sales</th><th>FIFO cost</th><th>Gross profit</th></tr></thead>
+          <tbody>{collections.days.map(d=><tr key={d.date}><td>{d.date}</td><td>{money(d.merchandise_received)}</td><td>{d.fifo_cost==null?'Unknown':money(d.fifo_cost)}</td><td>{d.gross_profit==null?'Unknown':money(d.gross_profit)}</td></tr>)}</tbody></table>}
+      </section>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {summaries.map(s => (
           <motion.div key={s.courier_code} variants={fadeUp}
@@ -712,13 +731,14 @@ function SettlementReport() {
               Unsettled Orders — {summaries.find(s => s.courier_code === activeCourier)?.courier_name}
             </h3>
             <button onClick={selectAll} className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
-              {selectedIds.size === orders.length ? 'Deselect All' : 'Select All'}
+              {selectable.length && selectable.every(o=>selectedIds.has(o.delivery_id)) ? 'Deselect shown' : 'Select shown'}
             </button>
           </div>
+          <label>Find order or tracking number <input value={search} onChange={e=>setSearch(e.target.value)}/></label>
           <div className="max-h-[400px] overflow-y-auto">
             <table className="w-full text-left text-sm">
               <thead><tr className="border-b border-slate-100 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                <th className="px-4 py-2 w-8"></th>
+                <th className="px-4 py-2 w-8"></th><th>Allocation</th>
                 <th className="px-4 py-2">Order #</th>
                 <th className="px-4 py-2">Ship Date</th>
                 <th className="px-4 py-2">Tracking</th>
@@ -726,17 +746,19 @@ function SettlementReport() {
                 <th className="px-4 py-2 text-right">Days</th>
               </tr></thead>
               <tbody>
-                {orders.map(o => (
-                  <tr key={o.delivery_id} onClick={() => toggleOrder(o.delivery_id)}
+                {visibleOrders.map(o => (
+                  <tr key={o.delivery_id} onClick={() => o.item_value!=null && toggleOrder(o.delivery_id)}
                     className={`cursor-pointer border-b border-slate-50 transition dark:border-slate-800/50 ${selectedIds.has(o.delivery_id) ? 'bg-brand-50/50 dark:bg-brand-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
                     <td className="px-4 py-2">
-                      <input type="checkbox" checked={selectedIds.has(o.delivery_id)} onChange={() => toggleOrder(o.delivery_id)}
+                      <input type="checkbox" disabled={o.item_value==null} checked={selectedIds.has(o.delivery_id)} onClick={e=>e.stopPropagation()} onChange={() => toggleOrder(o.delivery_id)}
                         className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600" />
                     </td>
+                    <td><input aria-label={'Allocation '+o.order_number} type="number" min="0" max={o.remaining} step=".01" value={allocations[o.delivery_id]??''}
+                      onClick={e=>e.stopPropagation()} onChange={e=>setAllocations({...allocations,[o.delivery_id]:e.target.value})}/><p>{o.settlement_status}</p>{[['retained_delivery','Courier-retained delivery'],['courier_fee','Additional courier fee'],['other_deduction','Approved other deduction'],['deduction_reason','Deduction evidence/reason']].map(([key,label])=><label key={key}>{label}<input type={key==='deduction_reason'?'text':'number'} min="0" step=".01" value={charges[o.delivery_id]?.[key]??''} onClick={e=>e.stopPropagation()} onChange={e=>setCharges({...charges,[o.delivery_id]:{...charges[o.delivery_id],[key]:key==='deduction_reason'?e.target.value:Number(e.target.value)}})}/></label>)}</td>
                     <td className="px-4 py-2 font-mono text-xs text-slate-900 dark:text-white">{o.order_number}</td>
                     <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{new Date(o.ship_date).toLocaleDateString('en-LK')}</td>
                     <td className="px-4 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{o.tracking_number || '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900 dark:text-white">{money(o.item_value)}</td>
+                    <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900 dark:text-white">{o.item_value==null?'Reconcile obligation':money(o.remaining)}</td>
                     <td className={`px-4 py-2 text-right font-mono text-xs ${o.days_pending > 14 ? 'font-semibold text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>{o.days_pending}</td>
                   </tr>
                 ))}
@@ -747,7 +769,7 @@ function SettlementReport() {
           <div className="border-t border-slate-100 p-4 dark:border-slate-800">
             <form onSubmit={submitSettlement} className="flex flex-wrap items-end gap-3">
               <div className="flex-1 min-w-[150px]">
-                <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Settlement Amount</label>
+                <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Remittance received</label>
                 <input type="number" step="0.01" min="0.01" value={settleAmount} onChange={e => setSettleAmount(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
               </div>
@@ -756,7 +778,13 @@ function SettlementReport() {
                 <input value={settleNote} onChange={e => setSettleNote(e.target.value)} placeholder="Bank ref, date..."
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
               </div>
-              <button type="submit" disabled={settling || !settleAmount}
+              <label>Receipt source <select value={sourceReceipt?.id||''} onChange={e=>setSourceReceipt(history.find(r=>String(r.id)===e.target.value)||null)}><option value="">New cash/bank receipt</option>{history.filter(r=>!r.reversed_at&&!r.source_remittance_id&&Number(r.unapplied)>0).map(r=><option key={r.id} value={r.id}>Receipt #{r.id} · Unapplied {money(r.unapplied)}</option>)}</select></label>
+              <label>Business receipt date <input type="date" value={receiptDate} onChange={e=>setReceiptDate(e.target.value)}/></label>
+              <label>Receiving method <select value={method} onChange={e=>setMethod(e.target.value)}><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="card">Card</option></select></label>
+              <label>Receiving account <input required maxLength={100} value={account} onChange={e=>setAccount(e.target.value)}/></label>
+              <button type="button" disabled={settling} onClick={e=>submitSettlement(e,true)}>Preview allocations</button>
+              {preview && <div><p>Allocated {money(preview.allocated)} · Unapplied {money(preview.unapplied)}</p>{preview.lines.map(l=><p key={l.delivery_id}>{orders.find(o=>o.delivery_id===l.delivery_id)?.order_number} · {l.status} · Remaining {money(l.remaining)}</p>)}</div>}
+              <button type="submit" disabled={settling || !settleAmount || !selectedIds.size}
                 className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
                 {settling ? 'Recording...' : `Record Settlement${selectedIds.size > 0 ? ` (${selectedIds.size} orders)` : ''}`}
               </button>
@@ -764,13 +792,22 @@ function SettlementReport() {
             {selectedIds.size > 0 && (
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 Selected: {selectedIds.size} order{selectedIds.size !== 1 ? 's' : ''} totalling{' '}
-                <span className="font-mono font-semibold">{money(orders.filter(o => selectedIds.has(o.delivery_id)).reduce((s, o) => s + o.item_value, 0))}</span>
+                <span className="font-mono font-semibold">{money(orders.filter(o => selectedIds.has(o.delivery_id)).reduce((s, o) => s + o.remaining, 0))}</span>
               </p>
             )}
           </div>
         </motion.div>
       )}
 
+      {activeCourier && history.length>0 && <section className="space-y-2 rounded-xl border p-4"><h3>Remittance history</h3>
+        {history.map(r=><details key={r.id}><summary>{new Date(r.received_at).toLocaleDateString('en-LK')} · {money(r.amount)} · {r.receiving_account}</summary>
+        <p>{r.business_receipt_date?.slice(0,10)||'Receipt date requires review'} · {r.method} · {r.staff} · {r.notes} · Unapplied {money(r.unapplied)}</p>
+        {r.reversed_at?<p>Reversed · {r.reversal_reason}</p>:<button onClick={async()=>{
+          const reason=window.prompt('Reason for reversing this remittance');
+          if(!reason?.trim())return;
+          try{await client.post(`/settlements/${activeCourier.toLowerCase()}/${r.id}/reverse`,{reason});await loadOrders(activeCourier);await loadSummaries()}
+          catch(error){toast.error(error.response?.data?.message||'Reversal failed')}
+        }}>Reverse remittance (owner)</button>}{r.deliveries.map(d=><p key={d.order_number}>{d.order_number} · {d.tracking_number} · {money(d.applied)} · Delivery retained {money(d.retained_delivery)} · Fee {money(d.courier_fee)} · Deduction {money(d.other_deduction)} · {d.deduction_reason}</p>)}</details>)}</section>}
       {activeCourier && orders.length === 0 && (
         <motion.div variants={fadeUp} className="rounded-xl border border-dashed border-emerald-300 py-8 text-center dark:border-emerald-700">
           <span className="text-2xl">&#10003;</span>

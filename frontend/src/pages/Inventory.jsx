@@ -10,7 +10,7 @@ import { TableSkeleton } from '../components/Skeleton';
 import { filterInventoryGroups } from '../utils/inventorySearch.js';
 
 function money(n) {
-  return `Rs. ${Number(n || 0).toFixed(2)}`;
+  return n==null ? '—' : `Rs. ${Number(n).toFixed(2)}`;
 }
 
 function ScanIcon({ className = 'h-4 w-4' }) {
@@ -484,6 +484,7 @@ function VariantRow({ v, onEdit, onAdjust, onHistory, onDelete, onPriceUpdate, c
   }
 
   function renderPrice(field, value) {
+    if(field==='cost_price' && value===undefined)return '—';
     if (editingPrice === field) {
       return (
         <input autoFocus type="number" value={priceValue}
@@ -612,7 +613,7 @@ function EditVariantDrawer({ variant, onClose, onSaved }) {
     variant_label: variant.variant_label || '',
     sku: variant.sku || '',
     barcode: variant.barcode || '',
-    cost_price: variant.cost_price || 0,
+    cost_price: variant.cost_price ?? '',
     wholesale_price: variant.wholesale_price || 0,
     retail_price: variant.retail_price || 0,
     mrp: variant.mrp || '',
@@ -654,9 +655,9 @@ function EditVariantDrawer({ variant, onClose, onSaved }) {
     try {
       await client.put(`/products/variants/${variant.variant_id}`, {
         ...form,
-        cost_price: Number(form.cost_price) || 0,
+        cost_price: variant.cost_price===undefined ? undefined : (form.cost_price==='' ? null : Number(form.cost_price)),
         wholesale_price: Number(form.wholesale_price) || 0,
-        retail_price: Number(form.retail_price) || 0,
+        retail_price: form.retail_price==='' ? null : Number(form.retail_price),
         mrp: form.mrp ? Number(form.mrp) : null,
         discount_value: Number(form.discount_value) || 0,
         low_stock_threshold: form.low_stock_threshold ? Number(form.low_stock_threshold) : null,
@@ -684,7 +685,7 @@ function EditVariantDrawer({ variant, onClose, onSaved }) {
           <button type="button" onClick={() => setScanOpen(true)} className="flex shrink-0 items-center justify-center rounded-xl border border-slate-200 px-2 text-slate-500 transition hover:bg-slate-50 dark:border-slate-700"><ScanIcon /></button>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <input type="number" value={form.cost_price} onChange={(e) => upd('cost_price', e.target.value)} placeholder="Cost price" className={`${ic} font-mono`} />
+          <input hidden={variant.cost_price===undefined} type="number" value={form.cost_price} onChange={(e) => upd('cost_price', e.target.value)} placeholder="Cost price" className={`${ic} font-mono`} />
           <input type="number" value={form.wholesale_price} onChange={(e) => upd('wholesale_price', e.target.value)} placeholder="Wholesale" className={`${ic} font-mono`} />
           <input type="number" value={form.retail_price} onChange={(e) => upd('retail_price', e.target.value)} placeholder="Retail price" className={`${ic} font-mono`} />
           <input type="number" value={form.mrp} onChange={(e) => upd('mrp', e.target.value)} placeholder="MRP" className={`${ic} font-mono`} />
@@ -824,8 +825,8 @@ function AddProductForm({ categories, brands, onCreated, onError, onCatalogChang
         low_stock_threshold: Number(lowThreshold) || 5, tag_ids: selectedTagIds,
         variants: variants.map((v) => ({
           sku: v.sku, barcode: v.barcode || null, variant_label: v.variant_label, image_url: v.image_url || null,
-          cost_price: Number(v.cost_price) || 0, wholesale_price: Number(v.wholesale_price) || 0,
-          retail_price: Number(v.retail_price) || 0, mrp: v.mrp ? Number(v.mrp) : null,
+          cost_price: v.cost_price==='' ? null : Number(v.cost_price), wholesale_price: Number(v.wholesale_price) || 0,
+          retail_price: v.retail_price==='' ? null : Number(v.retail_price), mrp: v.mrp ? Number(v.mrp) : null,
           current_stock: Number(v.current_stock) || 0, low_stock_threshold: v.low_stock_threshold ? Number(v.low_stock_threshold) : null,
           price_tiers: (v.price_tiers || []).filter(t => t.min_quantity && t.tier_price).map(t => ({
             min_quantity: Number(t.min_quantity), tier_price: Number(t.tier_price), label: t.label || null,
@@ -937,7 +938,14 @@ function AddProductForm({ categories, brands, onCreated, onError, onCatalogChang
 }
 
 function AdjustDrawer({ variant, onClose, onDone, onError }) {
+  const { user } = useAuth();
+  const [evidence, setEvidence] = useState(null);
+  const [receiptRows, setReceiptRows] = useState([{quantity:'',unit_cost:'',received_date:''}]);
+  useEffect(()=>{client.get(`/inventory/batches/${variant.variant_id}`).then(r=>setEvidence(r.data.data)).catch(e=>onError(e.response?.data?.message || 'Could not load batch evidence'));},[variant.variant_id]);
   const [delta, setDelta] = useState('');
+  const [reason, setReason] = useState('');
+  const [unitCost, setUnitCost] = useState('');
+  const [submissionKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
 
   async function submit(sign) {
@@ -946,7 +954,7 @@ function AdjustDrawer({ variant, onClose, onDone, onError }) {
     setSubmitting(true);
     onError('');
     try {
-      await client.post('/inventory/adjust', { variant_id: variant.variant_id, change_qty: sign * magnitude });
+      await client.post('/inventory/adjust', { variant_id: variant.variant_id, change_qty: sign * magnitude, reason, unit_cost: sign > 0 ? unitCost : null, submission_key: submissionKey });
       onDone();
     } catch (err) { onError(err.response?.data?.message ?? 'Adjustment failed'); setSubmitting(false); }
   }
@@ -955,6 +963,28 @@ function AdjustDrawer({ variant, onClose, onDone, onError }) {
     <Drawer onClose={onClose} title="Adjust stock">
       <p className="mb-1 text-sm font-medium text-slate-900 dark:text-white">{variant.name}</p>
       <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">{variant.variant_label} · <span className="font-mono">{variant.sku}</span> · current <span className="font-mono font-medium">{variant.current_stock}</span></p>
+      {evidence && <p className="mb-3 text-sm">Documented batch stock: {evidence.documented_stock}. Undocumented stock: {evidence.undocumented_stock}.</p>}
+      {evidence?.undocumented_stock>0 && ['owner','admin'].includes(user?.role) && <details className="mb-4 rounded border p-3">
+        <summary>Reconcile original receipt evidence</summary>
+        <p className="my-2 text-xs">Only enter quantities, actual costs and receipt dates supported by original records. This documents remaining stock without changing physical quantities or historical sale profits. Unsupported quantities remain blocked from sale.</p>
+        {receiptRows.map((row,index)=><div key={index} className="mb-2 grid grid-cols-3 gap-2">
+          {[['quantity','number','Quantity'],['unit_cost','number','Actual unit cost'],['received_date','date','Original receipt date']].map(([key,type,label])=><label key={key} className="text-xs">{label}<input aria-label={`${label} batch ${index+1}`} type={type} min={type==='number'?'0':undefined} step={key==='unit_cost'?'0.01':undefined} value={row[key]} onChange={e=>setReceiptRows(rows=>rows.map((r,i)=>i===index?{...r,[key]:e.target.value}:r))} className="block w-full rounded border p-2 dark:bg-slate-800" /></label>)}
+        </div>)}
+        <button type="button" onClick={()=>setReceiptRows(rows=>[...rows,{quantity:'',unit_cost:'',received_date:''}])} className="mr-3 text-sm underline">Add evidence row</button>
+        <button type="button" disabled={submitting} className="text-sm underline" onClick={async()=>{
+          setSubmitting(true);onError('');
+          try{await client.post('/inventory/reconcile',{variant_id:variant.variant_id,reason,submission_key:submissionKey,batches:receiptRows.map(r=>({...r,quantity:Number(r.quantity)}))});onDone();}
+          catch(e){onError(e.response?.data?.message || 'Reconciliation failed');setSubmitting(false);}
+        }}>Record evidenced batches</button>
+        <p className="mt-2 text-xs">Enter the supporting reference in the reason field below before recording.</p>
+      </details>}
+      <label className="mb-3 block text-sm">Reason / supporting reference
+        <textarea required maxLength={500} value={reason} onChange={e=>setReason(e.target.value)} className="block w-full rounded border p-2 dark:bg-slate-800" />
+      </label>
+      <label className="mb-3 block text-sm">Actual unit cost (required when adding stock)
+        <input type="number" min="0" step="0.01" value={unitCost} onChange={e=>setUnitCost(e.target.value)} className="block w-full rounded border p-2 dark:bg-slate-800" />
+      </label>
+      <p className="mb-3 text-xs text-slate-500">Removals consume the oldest receipt batches. Supplier receipts belong in Purchasing. Existing sales and their costs remain unchanged.</p>
       <input type="number" min="1" autoFocus placeholder="Quantity" value={delta} onChange={(e) => setDelta(e.target.value)}
         className="mb-4 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
       <div className="flex gap-3">
@@ -985,7 +1015,7 @@ function HistoryDrawer({ variant, onClose }) {
                 <span className={`font-mono font-medium ${m.change_qty >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                   {m.change_qty >= 0 ? '+' : ''}{m.change_qty}
                 </span>
-                <span className="ml-2 text-slate-500 dark:text-slate-400">{m.reason.replace(/_/g, ' ')}</span>
+                <span className="ml-2 text-slate-500 dark:text-slate-400">{m.adjustment_reason || m.reason.replace(/_/g, ' ')}</span>
               </div>
               <div className="text-right text-xs text-slate-400">
                 <div>{new Date(m.created_at).toLocaleString()}</div>
@@ -1017,7 +1047,7 @@ function VariantDetailModal({ v, onClose, onEdit, onAdjust, onHistory, onDelete 
     }
   }
 
-  const cost = Number(v.cost_price || 0);
+  const cost = v.cost_price==null ? null : Number(v.cost_price);
   const retail = Number(v.retail_price || 0);
   const margin = retail > 0 ? ((retail - cost) / retail * 100).toFixed(1) : 0;
   const threshold = v.low_stock_threshold ?? 5;
@@ -1077,7 +1107,7 @@ function VariantDetailModal({ v, onClose, onEdit, onAdjust, onHistory, onDelete 
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Margin</p>
-                  <p className={`font-mono text-sm font-semibold ${Number(margin) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>{margin}%</p>
+                  <p className={`font-mono text-sm font-semibold ${Number(margin) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>{cost==null ? '—' : `${margin}%`}</p>
                 </div>
               </div>
 

@@ -1,3 +1,4 @@
+import Receipt from '../components/Receipt';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import client from '../api/client';
@@ -38,10 +39,31 @@ const PAYMENT_LABELS = {
 
 const REJECT_REASONS = ['Out of stock', 'Invalid address', 'Suspicious order', 'Customer requested cancellation'];
 
+function AllocationReview({order,onSaved,isOwner}) {
+  const [reason,setReason]=useState('');
+  const [values,setValues]=useState({});
+  const [error,setError]=useState('');
+  if(!order.items.some(i=>i.remaining_refund_cents===null))return null;
+  return <section className="rounded border p-3"><strong>Original discount allocation unavailable</strong>
+    <p>Refunds require an owner to reconcile the original merchandise payment using supporting evidence.</p>
+    {isOwner && <form onSubmit={async e=>{
+      e.preventDefault();
+      try{await client.post('/orders/'+order.id+'/refund-allocation',{reason,amounts:order.items.map(i=>({id:i.id,cents:Math.round(Number(values[i.id])*100)}))});onSaved()}
+      catch(err){setError(err.response?.data?.message||'Review could not be saved')}
+    }}>
+      {order.items.map(i=><label key={i.id} className="block">{i.product_name} · {i.variant_label} — paid for all {i.quantity}
+        <input required type="number" min="0" max={i.line_total} step=".01" value={values[i.id]??''} onChange={e=>setValues({...values,[i.id]:e.target.value})}/>
+      </label>)}
+      <label>Supporting evidence <input required maxLength={500} value={reason} onChange={e=>setReason(e.target.value)}/></label>
+      <button>Approve refund allocation</button><p role="alert">{error}</p>
+    </form>}</section>
+}
+
 export default function Orders() {
   const toast = useToast();
   const { user } = useAuth();
   const detailRequest = useRef(0);
+  const [receiptId,setReceiptId] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -174,7 +196,7 @@ export default function Orders() {
     setRefundItem(item);
     setRefundQty(1);
     setRefundReason('');
-    const perUnit = Number(item.line_total) / item.quantity;
+    const perUnit = Math.round(item.remaining_refund_cents / max)/100;
     setRefundAmount(perUnit.toFixed(2));
     setRefundRestock(true);
     setRefundError('');
@@ -334,6 +356,9 @@ export default function Orders() {
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
               <div className="flex items-start justify-between">
                 <div>
+                  <AllocationReview key={selectedOrder.id} order={selectedOrder} isOwner={user?.role==='owner'} onSaved={()=>openOrder(selectedOrder.id)} />
+                  {receiptId && <Receipt orderId={receiptId} onClose={()=>setReceiptId(null)} />}
+                  <button onClick={()=>setReceiptId(selectedOrder.id)}>View receipt</button>
                   <h2 className="font-mono text-lg font-semibold text-slate-900 dark:text-white">{selectedOrder.order_number}</h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{fmtDate(selectedOrder.created_at)}</p>
                 </div>
@@ -385,7 +410,7 @@ export default function Orders() {
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-medium text-slate-900 dark:text-white">{money(item.line_total)}</span>
                           {maxRet > 0 && !['refunded', 'cancelled'].includes(selectedOrder.status) && (
-                            <button onClick={() => startRefund(item)} className="rounded-lg border border-red-200 px-2 py-0.5 text-xs font-medium text-red-600 transition hover:bg-red-50 active:scale-[0.97] dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-900/20">
+                            <button disabled={item.remaining_refund_cents==null} onClick={() => startRefund(item)} className="rounded-lg border border-red-200 px-2 py-0.5 text-xs font-medium text-red-600 transition hover:bg-red-50 active:scale-[0.97] dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-900/20">
                               Refund
                             </button>
                           )}
@@ -500,13 +525,13 @@ export default function Orders() {
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Quantity</label>
                 <input type="number" min="1" max={getMaxReturnable(refundItem)} value={refundQty}
-                  onChange={(e) => { const q = Number(e.target.value); setRefundQty(q); setRefundAmount((Number(refundItem.line_total) / refundItem.quantity * q).toFixed(2)); }}
+                  onChange={(e) => { const q = Number(e.target.value); setRefundQty(q); setRefundAmount((Math.round(refundItem.remaining_refund_cents*q/getMaxReturnable(refundItem))/100).toFixed(2)); }}
                   required className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Refund amount</label>
                 <input type="number" step="0.01" min="0" max={refundItem.line_total} value={refundAmount}
-                  onChange={(e) => setRefundAmount(e.target.value)} required
+                  readOnly required
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
               </div>
             </div>

@@ -66,7 +66,7 @@ async function getSummary() {
 
   // Monthly COGS for gross profit
   const [[monthCogs]] = await db.query(`
-    SELECT COALESCE(SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, 0)), 0) AS cogs
+    SELECT COALESCE(SUM(COALESCE(oi.fifo_cost_total, oi.quantity * COALESCE(oi.cost_price_snapshot, 0))), 0) AS cogs
     FROM orders o
     JOIN order_items oi ON oi.order_id = o.id
     WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status IN ${fin.SETTLED}
@@ -83,7 +83,7 @@ async function getSummary() {
   const [[avgDaily]] = await db.query(`
     SELECT COUNT(DISTINCT DATE(o.created_at)) AS active_days,
            COALESCE(SUM(oi.quantity * oi.unit_price - COALESCE(oi.discount_amount, 0)), 0)
-           - COALESCE(SUM(oi.quantity * COALESCE(oi.cost_price_snapshot, 0)), 0) AS gross_profit_30d
+           - COALESCE(SUM(COALESCE(oi.fifo_cost_total, oi.quantity * COALESCE(oi.cost_price_snapshot, 0))), 0) AS gross_profit_30d
     FROM orders o
     JOIN order_items oi ON oi.order_id = o.id
     WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status IN ${fin.SETTLED}

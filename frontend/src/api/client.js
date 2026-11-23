@@ -17,5 +17,10 @@ client.interceptors.response.use(response => response, error => {
   return Promise.reject(error);
 });
 protectCheckout(client, '/orders/checkout');
+protectCheckout(client, '/orders/return-exchange');
+protectCheckout(client, '/purchase-orders');
+protectCheckout(client, /^\/orders\/\d+\/refund$/);
+protectCheckout(client, /^\/settlements\/[^/]+\/settle$/);
+protectCheckout(client, /^\/customers\/\d+\/repayment$/);
 deduplicateReads(client, () => localStorage.getItem('LITTORA_token'));
 export default client;

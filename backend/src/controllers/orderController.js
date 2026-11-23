@@ -30,13 +30,19 @@ async function checkout(req, res) {
       const item = items[i];
       if (!item?.variant_id) return res.status(400).json({ success: false, message: `Item ${i}: missing variant_id` });
       const qty = Number(item.quantity);
-      if (!qty || qty <= 0 || !Number.isFinite(qty)) {
+      if (!qty || qty <= 0 || !Number.isSafeInteger(qty)) {
         return res.status(400).json({ success: false, message: `Item ${i}: quantity must be a positive number (got: ${item.quantity})` });
       }
+      item.quantity = qty;
       const price = Number(item.unit_price);
-      if (price === undefined || price === null || !Number.isFinite(price) || price < 0) {
+      if (item.unit_price == null || item.unit_price === '' || !Number.isFinite(price) || price < 0) {
         return res.status(400).json({ success: false, message: `Item ${i}: unit_price must be a valid number >= 0 (got: ${item.unit_price})` });
       }
+      const discount = Number(item.discount_amount ?? 0);
+      if (!Number.isFinite(discount) || discount < 0 || discount > qty*price) {
+        return res.status(400).json({success:false,message:'Line discount exceeds the line value or is invalid'});
+      }
+      item.discount_amount=discount;
     }
     
     // Validate payments structure
@@ -54,6 +60,7 @@ async function checkout(req, res) {
       channel,
       customer_id: customer_id || null,
       cashier_id: req.user.id,
+      enforce_catalog_price: req.user.role !== 'owner' && !req.user.permissions?.includes('settings'),
       items,
       payments,
       fulfillment_type: req.body.fulfillment_type || 'pickup',
@@ -63,6 +70,8 @@ async function checkout(req, res) {
       discount_total: Number(req.body.discount_total) || 0,
       delivery_fee: Number(req.body.delivery_fee) || 0,
       notes: req.body.notes || null,
+      redeem_points:req.body.redeem_points, wholesale:req.body.wholesale===true,
+      coupon_code: req.body.coupon_code || null,
       request_key: req.headers['idempotency-key'] ? `pos:${req.user.id}:${req.headers['idempotency-key']}` : null,
       request_hash: requestHash({ userId: req.user.id, body: req.body })
     };
@@ -81,6 +90,10 @@ async function getOrder(req, res) {
   try {
     const order = await orderModel.getOrderById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if(!require('../middleware/salesScope').unrestricted(req.user)){
+      for(const line of order.items){delete line.cost_price_snapshot;delete line.fifo_cost_total}
+      for(const ret of order.returns)delete ret.fifo_cost_total;
+    }
     res.json({ success: true, data: order });
   } catch (error) {
     console.error(error);
@@ -90,7 +103,7 @@ async function getOrder(req, res) {
 
 async function listOrders(req, res) {
   try {
-    const orders = await orderModel.getAllOrders(req.query);
+    const orders = require('../middleware/salesScope').unrestricted(req.user) ? await orderModel.getAllOrders(req.query) : require('../middleware/salesScope').visibleBills(req.salesBills,req.query);
     res.json({ success: true, data: orders });
   } catch (error) {
     console.error(error);
@@ -100,6 +113,7 @@ async function listOrders(req, res) {
 
 async function bestSellers(req, res) {
   try {
+    if(!require('../middleware/salesScope').unrestricted(req.user))return res.status(403).json({message:'Owner or administrator access required for historical best sellers'});
     const products = await orderModel.getBestSellers();
     res.json({ success: true, data: products });
   } catch (error) {
@@ -110,8 +124,10 @@ async function bestSellers(req, res) {
 
 async function refundOrder(req, res) {
   try {
+    const key=req.headers['idempotency-key'];
+    if(typeof key!=='string'||!/^[-\w]{8,80}$/.test(key))return res.status(400).json({message:'A refund submission key is required'});
     const result = await orderModel.processRefund(
-      parseInt(req.params.id), req.body, req.user.id
+      parseInt(req.params.id), {...req.body,submission_key:'refund:'+req.user.id+':'+key}, req.user.id
     );
     res.json({ success: true, data: result });
   } catch (error) {
@@ -123,6 +139,7 @@ async function refundOrder(req, res) {
 async function getReturns(req, res) {
   try {
     const returns = await orderModel.getOrderReturns(parseInt(req.params.id));
+    if(!require('../middleware/salesScope').unrestricted(req.user))for(const row of returns)delete row.fifo_cost_total;
     res.json({ success: true, data: returns });
   } catch (error) {
     console.error(error);
@@ -132,7 +149,7 @@ async function getReturns(req, res) {
 
 async function searchForReturn(req, res) {
   try {
-    const orders = await orderModel.searchOrderForReturn(req.query.q || '');
+    const orders = require('../middleware/salesScope').unrestricted(req.user) ? await orderModel.searchOrderForReturn(req.query.q || '') : require('../middleware/salesScope').visibleBills(req.salesBills,req.query);
     res.json({ success: true, data: orders });
   } catch (error) {
     console.error(error);
@@ -152,7 +169,9 @@ async function getReturnItems(req, res) {
 
 async function returnExchange(req, res) {
   try {
-    const result = await orderModel.processExchange(req.body, req.user.id);
+    const key=req.headers['idempotency-key'];
+      if(typeof key!=='string'||!/^[A-Za-z0-9_-]{8,80}$/.test(key))return res.status(400).json({success:false,message:'A return submission key is required'});
+      const result = await orderModel.processExchange({...req.body,submission_key:'return:'+req.user.id+':'+key,enforce_catalog_price:req.user.role!=='owner'&&!req.user.permissions.includes('settings')}, req.user.id);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error(error);

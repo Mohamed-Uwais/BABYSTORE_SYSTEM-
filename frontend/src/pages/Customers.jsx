@@ -48,6 +48,8 @@ export default function Customers() {
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
+  const [creditReceipts,setCreditReceipts]=useState([]);
+  const [repayOrder,setRepayOrder]=useState(''),[repayAccount,setRepayAccount]=useState(''),[repayDate,setRepayDate]=useState('');
   const [repayOpen, setRepayOpen] = useState(false);
   const [repayAmount, setRepayAmount] = useState('');
   const [repayNote, setRepayNote] = useState('');
@@ -132,6 +134,7 @@ export default function Customers() {
     if (customerOverride && customerOverride.id !== detail?.id) {
       loadDetail(customerOverride.id);
     }
+    setCreditReceipts([]);
     setRepayAmount('');
     setRepayNote('');
     setRepayMethod('cash');
@@ -146,7 +149,7 @@ export default function Customers() {
     const methodLabel = { cash: 'Cash', card: 'Card', bank_transfer: 'Bank Transfer' }[repayMethod] || repayMethod;
     const note = [methodLabel, repayNote].filter(Boolean).join(' — ');
     try {
-      await client.post(`/customers/${detail.id}/repayment`, { amount: amt, notes: note });
+      await client.post(`/customers/${detail.id}/repayment`, { amount: amt, notes: note,order_id:Number(repayOrder),account:repayAccount,method:repayMethod,business_receipt_date:repayDate });
       setRepayOpen(false);
       const remaining = Math.max(0, Math.abs(Number(detail.credit_balance)) - amt);
       toast.success(`Payment of ${money(amt)} recorded. Remaining balance: ${money(remaining)}`);
@@ -306,6 +309,16 @@ export default function Customers() {
                     </div>
                   )
                 )}
+                <section className="mb-4"><button onClick={async()=>{try{setCreditReceipts((await client.get('/customers/'+detail.id+'/receipts')).data.data)}catch(e){toast.error('Could not load receipts')}}}>Load credit receipts</button>
+                {creditReceipts.map(r=><div key={r.id} className="rounded border p-3">
+                  <p>{r.order_number} · {r.business_receipt_date} · {money(r.amount)} · {r.method} · {r.receiving_account} · {r.staff}</p>
+                  {r.reversed_date?<p>Reversed {r.reversed_date} · {r.reversal_reason}</p>:<button onClick={async()=>{
+                    const reason=window.prompt('Reason for reversing this credit receipt');
+                    if(!reason?.trim())return;
+                    try{await client.post('/customers/'+detail.id+'/receipts/'+r.id+'/reverse',{reason});setCreditReceipts((await client.get('/customers/'+detail.id+'/receipts')).data.data);await loadDetail(detail.id);await fetchCustomers()}
+                    catch(e){toast.error(e.response?.data?.message||'Reversal failed')}
+                  }}>Reverse receipt (owner)</button>}
+                </div>)}</section>
                 {detailTab === 'ledger' && (
                   detail.ledger.length === 0 ? (
                     <EmptyState icon="📒" title="No ledger entries" description="Points and credit transactions will appear here" />
@@ -373,6 +386,9 @@ export default function Customers() {
           <p className="text-lg font-bold font-mono text-red-600 dark:text-red-400">{money(Math.abs(detail.credit_balance || 0))}</p>
         </div>
         <form onSubmit={submitRepayment} className="space-y-4">
+          <label>Original credit bill<select required value={repayOrder} onChange={e=>setRepayOrder(e.target.value)}><option value="">Select bill</option>{detail?.orders.map(o=><option key={o.id} value={o.id}>{o.order_number}</option>)}</select></label>
+          <label>Receiving account<input required maxLength={100} value={repayAccount} onChange={e=>setRepayAccount(e.target.value)}/></label>
+          <label>Business receipt date<input required type="date" value={repayDate} onChange={e=>setRepayDate(e.target.value)}/></label>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (Rs.)</label>
             <input value={repayAmount} onChange={e => setRepayAmount(e.target.value)} type="number" step="0.01" min="0.01"

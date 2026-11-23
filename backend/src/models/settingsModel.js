@@ -9,7 +9,9 @@ async function updateSettings(data) {
   const fields = [
     'store_name', 'address_line1', 'address_line2', 'city',
     'phone', 'email', 'tax_id', 'currency_symbol', 'receipt_footer', 'logo_url',
-    'wa_notify_confirmed', 'wa_notify_shipped', 'wa_notify_delivered',
+    'wa_notify_confirmed', 'wa_notify_shipped', 'wa_notify_delivered', 'receipt_paper',
+    'label_width', 'label_height', 'label_gap', 'label_margin', 'label_columns', 'label_name', 'label_price', 'receipt_customer', 'receipt_cashier', 'receipt_contact',
+    'receipt_width_mm', 'receipt_margin_mm', 'receipt_font_px', 'receipt_show_logo',
   ];
   const sets = [];
   const params = [];

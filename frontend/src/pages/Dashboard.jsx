@@ -88,6 +88,7 @@ export default function Dashboard() {
     </div>
   );
 
+  if(summary?.restricted)return <PageWrapper><section className="p-6 space-y-4"><h1>Today’s permitted sales</h1><p>Asia/Colombo · Newest complete bills up to Rs.51,785</p><p>{summary.today.orders} bills · {money(summary.today.revenue)}</p><table className="w-full"><tbody>{recentOrders.map(o=><tr key={o.id}><td>{o.order_number}</td><td>{money(o.grand_total)}</td></tr>)}</tbody></table></section></PageWrapper>;
   const kpiCards = [
     { label: "Today's Revenue", value: Number(summary?.today?.revenue || 0), prefix: 'Rs. ', sub: `${summary?.today?.orders || 0} orders`, accent: 'from-brand-500 to-brand-600', iconBg: 'bg-brand-100 dark:bg-brand-900/30' },
     { label: 'This Week', value: Number(summary?.week?.revenue || 0), prefix: 'Rs. ', sub: `${summary?.week?.orders || 0} orders`, accent: 'from-cyan-500 to-cyan-600', iconBg: 'bg-cyan-100 dark:bg-cyan-900/30' },
